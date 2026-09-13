@@ -200,6 +200,18 @@ class OtaUpdateManager(
             Log.w(TAG, "Could not query DownloadManager state", e)
         }
 
+        // Cancel any stale/previous active download task in DownloadManager
+        try {
+            val staleId = preferences.activeDownloadId.first()
+            if (staleId != -1L) {
+                downloadManager.remove(staleId)
+                preferences.setActiveDownloadId(-1L)
+                Log.d(TAG, "Removed stale download task ID: $staleId")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error purging stale download task", e)
+        }
+
         val fileName = asset.name.ifBlank { "song-release-${release.tagName}.apk" }
         val targetFile = File(downloadsDir, fileName)
         if (targetFile.exists()) {
@@ -307,10 +319,41 @@ class OtaUpdateManager(
         } catch (e: ActivityNotFoundException) {
             Log.e(TAG, "No activity found on system to handle package installation intent", e)
             return false
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException launching package installer (OS background restriction)", e)
+            return false
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer", e)
             return false
         }
+    }
+
+    /**
+     * Checks on cold start if a background download completed while the app process was terminated.
+     */
+    suspend fun checkPendingDownloadOnStart(): File? {
+        val activeId = preferences.activeDownloadId.first()
+        if (activeId == -1L) return null
+
+        val progress = queryDownloadProgress(activeId)
+        if (progress != null) {
+            if (progress.status == DownloadManager.STATUS_SUCCESSFUL) {
+                val apkPath = preferences.downloadedApkPath.first()
+                if (!apkPath.isNullOrBlank()) {
+                    val file = File(apkPath)
+                    if (file.exists() && file.length() > 0) {
+                        Log.d(TAG, "Recovered completed background download (ID $activeId) at $apkPath")
+                        return file
+                    }
+                }
+            } else if (progress.status == DownloadManager.STATUS_FAILED) {
+                Log.w(TAG, "Stale download ID $activeId failed in background. Cleaning up task.")
+                try { downloadManager.remove(activeId) } catch (e: Exception) {}
+                preferences.setActiveDownloadId(-1L)
+                preferences.setDownloadedApkPath(null)
+            }
+        }
+        return null
     }
 
     /**

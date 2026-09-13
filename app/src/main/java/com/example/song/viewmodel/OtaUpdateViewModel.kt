@@ -92,8 +92,15 @@ class OtaUpdateViewModel(
                     _showWhatsNewModal.value = true
                 }
 
-                // Cold start background check
-                checkForUpdates(force = false)
+                // Cold start background download recovery check
+                val pendingFile = otaManager.checkPendingDownloadOnStart()
+                if (pendingFile != null) {
+                    downloadedFile = pendingFile
+                    triggerInstallFlow(pendingFile)
+                } else {
+                    // Cold start background check
+                    checkForUpdates(force = false)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing OTA check", e)
             }
@@ -233,7 +240,7 @@ class OtaUpdateViewModel(
         if (otaManager.canInstallPackages()) {
             val launched = otaManager.installApk(targetFile)
             if (!launched) {
-                _toastMessage.value = "Failed to launch package installer"
+                _toastMessage.value = "Installer launch blocked. Please tap the downloaded APK in your device's Downloads folder to install."
             }
         } else {
             // Prompt user to grant "Install Unknown Apps" permission
