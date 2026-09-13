@@ -332,12 +332,13 @@ class OtaUpdateManager(
             Log.d(TAG, "App updated from versionCode $lastInstalledCode to $currentVersionCode")
             val changelog = preferences.pendingChangelog.first()
 
-            // Update stored version code and clean up residual APKs
+            // Update stored version code, clean up residual APKs, and purge legacy cache
             preferences.setLastInstalledVersionCode(currentVersionCode)
             preferences.setActiveDownloadId(-1L)
             preferences.setDownloadedApkPath(null)
             preferences.clearRemindLater()
             cleanDownloadedApks()
+            purgeLegacyMediaCaches()
 
             return PostUpdateResult(isPostUpdate = true, changelog = changelog)
         }
@@ -359,6 +360,30 @@ class OtaUpdateManager(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error cleaning downloaded APKs", e)
+        }
+    }
+
+    /**
+     * Purges legacy media (including timestamped fallbacks) and image cache directories on version updates.
+     */
+    fun purgeLegacyMediaCaches() {
+        try {
+            // 1. Purge all media cache variations (Base + Fallbacks)
+            context.cacheDir.listFiles()?.forEach { file ->
+                if (file.isDirectory && file.name.startsWith("media_cache")) {
+                    val deleted = file.deleteRecursively()
+                    Log.d(TAG, "Purged legacy cache directory on version update: ${file.name} (deleted=$deleted)")
+                }
+            }
+            
+            // 2. Purge image cache
+            val imageCache = File(context.cacheDir, "image_cache")
+            if (imageCache.exists()) {
+                val deleted = imageCache.deleteRecursively()
+                Log.d(TAG, "Purged legacy image_cache directory on version update (deleted=$deleted)")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to purge legacy media caches", e)
         }
     }
 

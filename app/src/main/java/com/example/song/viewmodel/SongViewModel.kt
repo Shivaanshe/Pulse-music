@@ -14,6 +14,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
@@ -65,6 +66,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         application.filesDir
     )
     private var mediaController: MediaController? = null
+    private var isConnecting = false
 
     private fun isConnectedToInternet(): Boolean {
         val context = getApplication<Application>()
@@ -401,98 +403,108 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun initMediaController(context: Context) {
-        val token = SessionToken(context, ComponentName(context, MusicService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
+        if (mediaController != null || isConnecting) return
+        isConnecting = true
+
+        val appContext = context.applicationContext
+        val token = SessionToken(appContext, ComponentName(appContext, MusicService::class.java))
+        val future = MediaController.Builder(appContext, token).buildAsync()
         future.addListener({
-            mediaController = future.get().apply {
-                addListener(object : Player.Listener {
-                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                        mediaItem?.let { item ->
-                            val songId = item.mediaId.toIntOrNull()
-                            _currentPlayingSong.value = _allSongs.value.find { it.id == songId } ?: Song(
-                                id = songId ?: 0,
-                                title = item.mediaMetadata.title?.toString() ?: "Unknown",
-                                artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
-                                audioUri = item.mediaMetadata.extras?.getString("youtube_url") ?: "",
-                                imageUrl = item.mediaMetadata.extras?.getString("custom_artwork_url")
-                            )
-                            _duration.value = duration.coerceAtLeast(0L)
-                            PulseLogger.log("Track transition: ${_currentPlayingSong.value?.title}")
-                        }
-                    }
-
-                    override fun onIsPlayingChanged(playing: Boolean) {
-                        _isPlaying.value = playing
-                        PulseLogger.log("Playback state: ${if (playing) "Playing" else "Paused"}")
-                    }
-
-                    override fun onPositionDiscontinuity(
-                        oldPosition: Player.PositionInfo,
-                        newPosition: Player.PositionInfo,
-                        reason: Int
-                    ) {
-                        if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION || reason == Player.DISCONTINUITY_REASON_SKIP) {
-                            _currentPosition.value = 0L
-                        }
-                    }
-
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_READY) {
-                            mediaController?.let {
-                                _duration.value = it.duration.coerceAtLeast(0L)
-                                _currentPosition.value = it.currentPosition
+            isConnecting = false
+            try {
+                if (future.isDone && !future.isCancelled) {
+                    val controller = future.get()
+                    mediaController = controller
+                    controller.addListener(object : Player.Listener {
+                        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                            mediaItem?.let { item ->
+                                val songId = item.mediaId.toIntOrNull()
+                                _currentPlayingSong.value = _allSongs.value.find { it.id == songId } ?: Song(
+                                    id = songId ?: 0,
+                                    title = item.mediaMetadata.title?.toString() ?: "Unknown",
+                                    artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
+                                    audioUri = item.mediaMetadata.extras?.getString("youtube_url") ?: "",
+                                    imageUrl = item.mediaMetadata.extras?.getString("custom_artwork_url")
+                                )
+                                _duration.value = controller.duration.coerceAtLeast(0L)
+                                PulseLogger.log("Track transition: ${_currentPlayingSong.value?.title}")
                             }
-                            _playbackError.value = null
-                        }
-                    }
-
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        val currentItem = mediaController?.currentMediaItem
-                        val uriString = currentItem?.localConfiguration?.uri?.toString() ?: ""
-                        
-                        if (uriString.contains("pulse_placeholder:")) {
-                            PulseLogger.log("Masked placeholder error. Resolving JIT...")
-                            return
                         }
 
-                        Log.e("SongViewModel", "Playback error: ${error.message}", error)
-                        PulseLogger.log("Engine error: ${error.localizedMessage}", isError = true)
-                        
-                        val isOffline = !isConnectedToInternet() || 
-                                       error.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
-                                       error.message?.contains("No address associated", ignoreCase = true) == true ||
-                                       error.message?.contains("Network is unreachable", ignoreCase = true) == true ||
-                                       error.cause is UnknownHostException ||
-                                       error.cause is SocketTimeoutException ||
-                                       error.cause is IOException
-
-                        _playbackError.value = if (isOffline) {
-                            "App is offline. Please check your Internet connection."
-                        } else {
-                            "Playback Error: ${error.localizedMessage}"
+                        override fun onIsPlayingChanged(playing: Boolean) {
+                            _isPlaying.value = playing
+                            PulseLogger.log("Playback state: ${if (playing) "Playing" else "Paused"}")
                         }
-                        _isPlaying.value = false
-                    }
 
-                    override fun onRepeatModeChanged(repeatMode: Int) {
-                        _repeatMode.value = repeatMode
+                        override fun onPositionDiscontinuity(
+                            oldPosition: Player.PositionInfo,
+                            newPosition: Player.PositionInfo,
+                            reason: Int
+                        ) {
+                            if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION || reason == Player.DISCONTINUITY_REASON_SKIP) {
+                                _currentPosition.value = 0L
+                            }
+                        }
+
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_READY) {
+                                _duration.value = controller.duration.coerceAtLeast(0L)
+                                _currentPosition.value = controller.currentPosition
+                                _playbackError.value = null
+                            }
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            val currentItem = controller.currentMediaItem
+                            val uriString = currentItem?.localConfiguration?.uri?.toString() ?: ""
+                            
+                            if (uriString.contains("pulse_placeholder:")) {
+                                PulseLogger.log("Masked placeholder error. Resolving JIT...")
+                                return
+                            }
+
+                            Log.e("SongViewModel", "Playback error: ${error.message}", error)
+                            PulseLogger.log("Engine error: ${error.localizedMessage}", isError = true)
+                            
+                            val isOffline = !isConnectedToInternet() || 
+                                           error.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
+                                           error.message?.contains("No address associated", ignoreCase = true) == true ||
+                                           error.message?.contains("Network is unreachable", ignoreCase = true) == true ||
+                                           error.cause is UnknownHostException ||
+                                           error.cause is SocketTimeoutException ||
+                                           error.cause is IOException
+
+                            _playbackError.value = if (isOffline) {
+                                "App is offline. Please check your Internet connection."
+                            } else {
+                                "Playback Error: ${error.localizedMessage}"
+                            }
+                            _isPlaying.value = false
+                        }
+
+                        override fun onRepeatModeChanged(repeatMode: Int) {
+                            _repeatMode.value = repeatMode
+                        }
+                    })
+
+                    _repeatMode.value = controller.repeatMode
+                    _isPlaying.value = controller.isPlaying
+                    _currentPlayingSong.value = controller.currentMediaItem?.let { item ->
+                        val songId = item.mediaId.toIntOrNull()
+                        _allSongs.value.find { it.id == songId } ?: Song(
+                            id = songId ?: 0,
+                            title = item.mediaMetadata.title?.toString() ?: "Unknown",
+                            artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
+                            audioUri = item.mediaMetadata.extras?.getString("youtube_url") ?: "",
+                            imageUrl = item.mediaMetadata.extras?.getString("custom_artwork_url")
+                        )
                     }
-                })
-                _repeatMode.value = repeatMode
-                _isPlaying.value = isPlaying
-                _currentPlayingSong.value = currentMediaItem?.let { item ->
-                    val songId = item.mediaId.toIntOrNull()
-                    _allSongs.value.find { it.id == songId } ?: Song(
-                        id = songId ?: 0,
-                        title = item.mediaMetadata.title?.toString() ?: "Unknown",
-                        artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
-                        audioUri = item.mediaMetadata.extras?.getString("youtube_url") ?: "",
-                        imageUrl = item.mediaMetadata.extras?.getString("custom_artwork_url")
-                    )
+                    startProgressUpdate()
                 }
+            } catch (e: Exception) {
+                Log.e("SongViewModel", "Failed to initialize MediaController asynchronously", e)
             }
-            startProgressUpdate()
-        }, ContextCompat.getMainExecutor(context))
+        }, ContextCompat.getMainExecutor(appContext))
     }
 
     private fun startProgressUpdate() {
@@ -1177,7 +1189,17 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
-        mediaController?.release()
+        isConnecting = false
+        val controller = mediaController
+        mediaController = null
+        if (controller != null) {
+            try {
+                controller.stop()
+                controller.release()
+            } catch (e: Exception) {
+                Log.w("SongViewModel", "Handled exception during MediaController release (Service unbind/process teardown)", e)
+            }
+        }
         super.onCleared()
     }
 }

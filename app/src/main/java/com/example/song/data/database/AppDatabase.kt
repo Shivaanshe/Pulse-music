@@ -35,6 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "song_database"
                 )
                 .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigrationOnDowngrade()
                 .build()
                 INSTANCE = instance
                 instance

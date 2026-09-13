@@ -38,7 +38,8 @@ class SongApplication : Application(), ImageLoaderFactory {
     val cachedKeys = _cachedKeys.asStateFlow()
 
     @androidx.media3.common.util.UnstableApi
-    lateinit var playerCache: SimpleCache
+    var playerCache: SimpleCache? = null
+        private set
 
     lateinit var repository: SongRepository
         private set
@@ -77,20 +78,40 @@ class SongApplication : Application(), ImageLoaderFactory {
 
     @androidx.media3.common.util.UnstableApi
     private fun initPlayerCache() {
-        // 🔋 Strict 250MB limit for media files (Total Cache budget: 300MB = 250MB Media + 50MB Images)
         val cacheSize: Long = 250L * 1024 * 1024 
         val cacheEvictor = LeastRecentlyUsedCacheEvictor(cacheSize)
         val databaseProvider = StandaloneDatabaseProvider(this)
-        
-        playerCache = SimpleCache(
-            File(cacheDir, "media_cache"), 
-            cacheEvictor, 
-            databaseProvider
-        )
+        var cacheDirFile = File(cacheDir, "media_cache")
+
+        try {
+            playerCache = SimpleCache(
+                cacheDirFile, 
+                cacheEvictor, 
+                databaseProvider
+            )
+        } catch (e: Exception) {
+            Log.e("SongApplication", "Failed to initialize playerCache safely. Wiping corrupt/legacy cache and retrying.", e)
+            try {
+                val deleted = cacheDirFile.deleteRecursively()
+                if (!deleted || cacheDirFile.exists()) {
+                    Log.w("SongApplication", "deleteRecursively() failed or folder locked by OS. Switching to fallback directory.")
+                    cacheDirFile = File(cacheDir, "media_cache_fallback_${System.currentTimeMillis()}")
+                }
+
+                playerCache = SimpleCache(
+                    cacheDirFile, 
+                    cacheEvictor, 
+                    databaseProvider
+                )
+            } catch (e2: Exception) {
+                Log.e("SongApplication", "Failed to re-initialize playerCache after cleanup. Disabling local media cache.", e2)
+                playerCache = null
+            }
+        }
         
         CoroutineScope(Dispatchers.IO).launch {
             while (true) {
-                val keys = try { playerCache.keys } catch (e: Exception) { emptySet() }
+                val keys = try { playerCache?.keys ?: emptySet() } catch (e: Exception) { emptySet() }
                 if (_cachedKeys.value != keys) {
                     _cachedKeys.value = keys
                 }

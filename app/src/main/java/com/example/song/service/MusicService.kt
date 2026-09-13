@@ -122,10 +122,15 @@ class MusicService : MediaSessionService() {
             }
         )
 
-        val cacheDataSourceFactory = CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(resolvingDataSourceFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        val dataSourceFactory = if (cache != null) {
+            val cacheDataSourceFactory = CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(resolvingDataSourceFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            DefaultMediaSourceFactory(cacheDataSourceFactory)
+        } else {
+            DefaultMediaSourceFactory(resolvingDataSourceFactory)
+        }
 
         val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
             .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -133,7 +138,7 @@ class MusicService : MediaSessionService() {
             .build()
 
         player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(cacheDataSourceFactory))
+            .setMediaSourceFactory(dataSourceFactory)
             .setAudioAttributes(audioAttributes, true) // true handles audio focus automatically
             .setHandleAudioBecomingNoisy(true) // handle Bluetooth/Headphone disconnect
             .build()
