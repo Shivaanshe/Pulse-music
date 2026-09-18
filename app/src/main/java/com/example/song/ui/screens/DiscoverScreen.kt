@@ -61,10 +61,14 @@ import com.example.song.util.horizontalDragGestureHandler
 import com.example.song.viewmodel.SongViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 import com.example.song.ui.spotlight.SpotlightController
 import com.example.song.ui.spotlight.TourStep
 import com.example.song.ui.spotlight.spotlightTarget
+
+import com.example.song.viewmodel.DownloadState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -77,6 +81,9 @@ fun DiscoverScreen(
 ) {
     val items by viewModel.topLevelStreamingItems.collectAsState()
     val isExtracting by viewModel.isExtracting.collectAsState()
+    val extractionStatus by viewModel.extractionStatus.collectAsState()
+    val extractionProgress by viewModel.extractionProgress.collectAsState()
+    val downloadState by viewModel.downloadState.collectAsState()
     val isEngineReady by SongApplication.getInstance().isReady.collectAsState()
     val resolvingUrlId by viewModel.resolvingUrlId.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
@@ -199,7 +206,183 @@ fun DiscoverScreen(
             }
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                if (isExtracting) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFFE91E63))
+                // Dynamic Real-time Extraction & Download Progress Card
+                AnimatedVisibility(
+                    visible = isExtracting || downloadState !is DownloadState.Idle,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF121216).copy(alpha = 0.88f),
+                        shadowElevation = 8.dp,
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            if (isExtracting) {
+                                // Extraction Phase (Smoothly animated percentage progress + live status)
+                                val targetProgress = extractionProgress ?: 0.15f
+                                val animatedProgress by animateFloatAsState(
+                                    targetValue = targetProgress,
+                                    animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+                                    label = "extraction_progress"
+                                )
+                                LinearProgressIndicator(
+                                    progress = { animatedProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = Color(0xFF00E676),
+                                    trackColor = Color.White.copy(alpha = 0.1f)
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val percentInt = (animatedProgress * 100).toInt().coerceIn(0, 100)
+                                    Text(
+                                        text = "$percentInt% - ${extractionStatus ?: "Extracting metadata..."}",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            } else {
+                                // Download Phase (Real-time % progress & track counter)
+                                AnimatedContent(
+                                    targetState = downloadState,
+                                    transitionSpec = { fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200)) },
+                                    label = "DiscoverDownloadContent"
+                                ) { state ->
+                                    Column {
+                                        when (state) {
+                                            is DownloadState.Checking -> {
+                                                LinearProgressIndicator(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(6.dp)
+                                                        .clip(RoundedCornerShape(3.dp)),
+                                                    color = Color(0xFFE91E63),
+                                                    trackColor = Color.White.copy(alpha = 0.1f)
+                                                )
+                                                Text(
+                                                    text = "Preparing media engine...",
+                                                    modifier = Modifier.padding(top = 8.dp),
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = Color.White
+                                                )
+                                            }
+                                            is DownloadState.Downloading -> {
+                                                val progressFraction = state.progress / 100f
+                                                LinearProgressIndicator(
+                                                    progress = { progressFraction },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(6.dp)
+                                                        .clip(RoundedCornerShape(3.dp)),
+                                                    color = Color(0xFF00E676),
+                                                    trackColor = Color.White.copy(alpha = 0.1f)
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    val progressText = if (state.total > 1) {
+                                                        "Batch Download: ${state.current} of ${state.total} (${state.progress.toInt()}%)"
+                                                    } else {
+                                                        "Downloading audio... ${state.progress.toInt()}%"
+                                                    }
+                                                    Text(
+                                                        text = progressText,
+                                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                        color = Color.White
+                                                    )
+                                                    IconButton(
+                                                        onClick = { viewModel.cancelDownload() },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.Close,
+                                                            contentDescription = "Cancel Download",
+                                                            tint = Color.White.copy(alpha = 0.7f),
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            is DownloadState.Success -> {
+                                                LinearProgressIndicator(
+                                                    progress = { 1f },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(6.dp)
+                                                        .clip(RoundedCornerShape(3.dp)),
+                                                    color = Color(0xFF00E676),
+                                                    trackColor = Color.White.copy(alpha = 0.1f)
+                                                )
+                                                Text(
+                                                    text = "Download Complete!",
+                                                    modifier = Modifier.padding(top = 8.dp),
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = Color(0xFF00E676)
+                                                )
+                                            }
+                                            is DownloadState.Error -> {
+                                                LinearProgressIndicator(
+                                                    progress = { 0f },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(6.dp)
+                                                        .clip(RoundedCornerShape(3.dp)),
+                                                    color = Color(0xFFF44336),
+                                                    trackColor = Color.White.copy(alpha = 0.1f)
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = state.message,
+                                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFFF44336),
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    IconButton(
+                                                        onClick = { viewModel.resetDownloadState() },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.Close,
+                                                            contentDescription = "Dismiss",
+                                                            tint = Color.White.copy(alpha = 0.7f),
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            is DownloadState.Idle -> {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if (selectedPlaylist == null) {
                     var localSingleSongs by remember { mutableStateOf(emptyList<StreamingItem>()) }
@@ -446,27 +629,218 @@ fun DiscoverScreen(
             Box(modifier = Modifier.width(260.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = 0.4f)).border(1.5.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(28.dp))) { Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Surface(modifier = Modifier.fillMaxWidth().clickable { showAddMenu = false; showAddDialog = true }.clip(RoundedCornerShape(18.dp)), color = Color.White.copy(alpha = 0.2f), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))) { Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(36.dp).background(Color.Black.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF424242), modifier = Modifier.size(20.dp)) }; Spacer(modifier = Modifier.width(16.dp)); Text(text = "Add from YouTube & Spotify", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFF424242))) } } } }
         }
         if (showAddDialog) {
-            AlertDialog(onDismissRequest = { if (!isExtracting) showAddDialog = false }, title = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFFE91E63)); Spacer(modifier = Modifier.width(12.dp)); Text("Stream from Link") } },
-                text = { Column { if (isExtracting) { Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = Color(0xFFE91E63)); Spacer(modifier = Modifier.height(8.dp)); Text("Extracting...", style = MaterialTheme.typography.labelMedium) } } else { Text("Enter a YouTube or Spotify URL to add to your Discover list.", style = MaterialTheme.typography.bodySmall, color = Color.Gray); Spacer(modifier = Modifier.height(16.dp)); TextField(value = youtubeUrl, onValueChange = { youtubeUrl = it }, placeholder = { Text("https://youtube.com/...") }, singleLine = true, isError = (!isUrlValid && youtubeUrl.isNotBlank()) || extractionError != null, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Black.copy(alpha = 0.05f), unfocusedContainerColor = Color.Black.copy(alpha = 0.03f), focusedIndicatorColor = Color(0xFFE91E63), unfocusedIndicatorColor = Color.Transparent), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()); if (!isUrlValid && youtubeUrl.isNotBlank()) Text("Invalid URL (YouTube or Spotify only)", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp, start = 8.dp)); extractionError?.let { error -> Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp, start = 8.dp)) } } } },
-                confirmButton = { if (!isExtracting) Button(onClick = { if (youtubeUrl.isNotBlank() && isUrlValid && isEngineReady) { val urlToAdd = youtubeUrl.trim(); youtubeUrl = ""; viewModel.fetchStreamingMetadata(urlToAdd); showAddDialog = false } }, enabled = youtubeUrl.isNotBlank() && isUrlValid && isEngineReady, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63), disabledContainerColor = Color(0xFFE91E63).copy(alpha = 0.5f)), shape = RoundedCornerShape(12.dp)) { Text(if (isEngineReady) "Add to Discover" else "Initializing...") } },
-                dismissButton = { if (!isExtracting) TextButton(onClick = { showAddDialog = false }) { Text("Close", color = Color.Gray) } }, shape = RoundedCornerShape(28.dp), containerColor = Color.White
+            AlertDialog(
+                onDismissRequest = { if (!isExtracting) showAddDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF00E676))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Stream from Link", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White))
+                    }
+                },
+                text = {
+                    Column {
+                        if (isExtracting) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = Color(0xFF00E676))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Extracting...", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                            }
+                        } else {
+                            Text("Enter a YouTube or Spotify URL to add to your Discover list.", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = youtubeUrl,
+                                onValueChange = { youtubeUrl = it },
+                                placeholder = { Text("https://youtube.com/...", color = Color.White.copy(alpha = 0.4f)) },
+                                singleLine = true,
+                                isError = (!isUrlValid && youtubeUrl.isNotBlank()) || extractionError != null,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Black.copy(alpha = 0.40f),
+                                    unfocusedContainerColor = Color.Black.copy(alpha = 0.25f),
+                                    focusedBorderColor = Color(0xFF00E676),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (!isUrlValid && youtubeUrl.isNotBlank()) {
+                                Text("Invalid URL (YouTube or Spotify only)", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp, start = 8.dp))
+                            }
+                            extractionError?.let { error ->
+                                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp, start = 8.dp))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (!isExtracting) {
+                        Button(
+                            onClick = {
+                                if (youtubeUrl.isNotBlank() && isUrlValid && isEngineReady) {
+                                    val urlToAdd = youtubeUrl.trim()
+                                    youtubeUrl = ""
+                                    viewModel.fetchStreamingMetadata(urlToAdd)
+                                    showAddDialog = false
+                                }
+                            },
+                            enabled = youtubeUrl.isNotBlank() && isUrlValid && isEngineReady,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00E676),
+                                contentColor = Color.Black,
+                                disabledContainerColor = Color(0xFF00E676).copy(alpha = 0.3f),
+                                disabledContentColor = Color.White.copy(alpha = 0.4f)
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(if (isEngineReady) "Add to Discover" else "Initializing...", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                dismissButton = {
+                    if (!isExtracting) {
+                        TextButton(onClick = { showAddDialog = false }) {
+                            Text("Close", color = Color.White.copy(alpha = 0.60f), fontWeight = FontWeight.Medium)
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(32.dp),
+                containerColor = Color(0xFF141A16).copy(alpha = 0.95f),
+                modifier = Modifier.border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.25f),
+                            Color.White.copy(alpha = 0.05f)
+                        )
+                    ),
+                    shape = RoundedCornerShape(32.dp)
+                )
             )
         }
         if (pendingItems.isNotEmpty()) {
-            val playlistItem = pendingItems.find { it.isPlaylist }; val firstTrack = pendingItems.find { !it.isPlaylist }
-            androidx.compose.ui.window.Dialog(onDismissRequest = { viewModel.clearPendingStreamingItems() }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-                var isVisible by remember { mutableStateOf(false) }; LaunchedEffect(Unit) { isVisible = true }
-                AnimatedVisibility(visible = isVisible, enter = fadeIn(tween(400)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)), exit = fadeOut(tween(300)) + scaleOut(targetScale = 0.8f)) {
-                    Box(modifier = Modifier.fillMaxWidth(0.9f).clip(RoundedCornerShape(32.dp)).background(Color.White.copy(alpha = 0.4f)).border(1.5.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(32.dp)).padding(24.dp)) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Box(modifier = Modifier.height(180.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { firstTrack?.thumbnailUrl?.let { url -> AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(130.dp).rotate(-10f).offset(x = (-30).dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp)).shadow(8.dp), contentScale = ContentScale.Crop) }; (playlistItem?.thumbnailUrl ?: firstTrack?.thumbnailUrl)?.let { url -> AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(140.dp).rotate(5f).offset(x = 20.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(24.dp)).shadow(16.dp), contentScale = ContentScale.Crop) } }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Import Playlist", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF333333))); playlistItem?.let { Text(it.title, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF666666), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center) } }
-                            Text("How would you like to add this playlist to your Discover screen?", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF424242), textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 8.dp))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Button(onClick = { viewModel.addPendingStreamingItems(asCollection = true) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent), contentPadding = PaddingValues(), shape = RoundedCornerShape(16.dp)) { Box(modifier = Modifier.fillMaxSize().background(Brush.horizontalGradient(colors = listOf(Color(0xFFE040FB), Color(0xFFFF4081)))), contentAlignment = Alignment.Center) { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Add as Collection", fontWeight = FontWeight.Bold, color = Color.White) } } }
-                                Surface(onClick = { viewModel.addPendingStreamingItems(asCollection = false) }, modifier = Modifier.fillMaxWidth().height(56.dp), color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.3f))) { Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = Color(0xFF424242)); Spacer(modifier = Modifier.width(12.dp)); Text("Add Individual Items", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = Color(0xFF424242))) } }
-                                TextButton(onClick = { isVisible = false; scope.launch { delay(300); viewModel.clearPendingStreamingItems() } }, modifier = Modifier.fillMaxWidth()) { Text("Cancel", color = Color(0xFF666666), fontWeight = FontWeight.Medium) }
+            val playlistItem = pendingItems.find { it.isPlaylist }
+            val firstTrack = pendingItems.find { !it.isPlaylist }
+            val trackCount = pendingItems.count { !it.isPlaylist }
+            val trackCountText = if (trackCount > 0) " ($trackCount tracks)" else ""
+
+            Dialog(
+                onDismissRequest = { viewModel.clearPendingStreamingItems() },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                var isVisible by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { isVisible = true }
+
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = fadeIn(tween(400)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
+                    exit = fadeOut(tween(300)) + scaleOut(targetScale = 0.8f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                isVisible = false
+                                scope.launch { delay(300); viewModel.clearPendingStreamingItems() }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.25f),
+                                            Color.White.copy(alpha = 0.05f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(32.dp)
+                                )
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* Prevent dismiss */ },
+                            shape = RoundedCornerShape(32.dp),
+                            color = Color(0xFF141A16).copy(alpha = 0.95f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Box(modifier = Modifier.height(180.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    firstTrack?.thumbnailUrl?.let { url ->
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(130.dp).rotate(-10f).offset(x = (-30).dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp)).shadow(8.dp),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    (playlistItem?.thumbnailUrl ?: firstTrack?.thumbnailUrl)?.let { url ->
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(140.dp).rotate(5f).offset(x = 20.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(24.dp)).shadow(16.dp),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("Import Playlist", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = Color.White))
+                                    playlistItem?.let {
+                                        Text(it.title, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                    }
+                                }
+
+                                Text(
+                                    text = "How would you like to add this playlist$trackCountText to your Discover screen?",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Button(
+                                        onClick = { viewModel.addPendingStreamingItems(asCollection = true) },
+                                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676), contentColor = Color.Black),
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Folder, contentDescription = null, tint = Color.Black)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text("Add as Collection", fontWeight = FontWeight.Bold, color = Color.Black)
+                                        }
+                                    }
+
+                                    Surface(
+                                        onClick = { viewModel.addPendingStreamingItems(asCollection = false) },
+                                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                                        color = Color.White.copy(alpha = 0.10f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+                                    ) {
+                                        Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = Color.White)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text("Add Individual Items", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = Color.White))
+                                        }
+                                    }
+
+                                    TextButton(
+                                        onClick = { isVisible = false; scope.launch { delay(300); viewModel.clearPendingStreamingItems() } },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Cancel", color = Color.White.copy(alpha = 0.60f), fontWeight = FontWeight.Medium)
+                                    }
+                                }
                             }
                         }
                     }

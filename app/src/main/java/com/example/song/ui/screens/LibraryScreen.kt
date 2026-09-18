@@ -61,6 +61,8 @@ import com.example.song.viewmodel.SongViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 import com.example.song.ui.spotlight.SpotlightController
 import com.example.song.ui.spotlight.TourStep
@@ -452,29 +454,278 @@ fun LibraryScreen(
         AnimatedVisibility(visible = showAddMenu, enter = fadeIn() + scaleIn(initialScale = 0.4f, transformOrigin = TransformOrigin(0.9f, 0.1f)), exit = fadeOut() + scaleOut(targetScale = 0.4f, transformOrigin = TransformOrigin(0.9f, 0.1f)), modifier = Modifier.align(Alignment.TopEnd).padding(top = 70.dp, end = 16.dp).zIndex(10f)) {
             Box(modifier = Modifier.width(260.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = 0.4f)).border(1.5.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(28.dp))) { Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { AddMenuOption(text = "Create Playlist", icon = Icons.AutoMirrored.Filled.PlaylistAdd, onClick = { showAddMenu = false; showPlaylistDialog = true }); AddMenuOption(text = "Add Songs", icon = Icons.Default.LibraryMusic, onClick = { showAddMenu = false; launcher.launch(arrayOf("audio/*")) }); AddMenuOption(text = "Download from YT & Spotify", icon = Icons.Default.CloudDownload, onClick = { showAddMenu = false; showDownloadDialog = true }) } }
         }
-        if (showPlaylistDialog) { AlertDialog(onDismissRequest = { showPlaylistDialog = false }, title = { Text("New Playlist") }, text = { TextField(value = newPlaylistName, onValueChange = { newPlaylistName = it }, placeholder = { Text("Playlist Name") }, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent)) }, confirmButton = { Button(onClick = { if (newPlaylistName.isNotBlank()) { viewModel.createPlaylist(newPlaylistName); newPlaylistName = ""; showPlaylistDialog = false } }) { Text("Create") } }, dismissButton = { TextButton(onClick = { showPlaylistDialog = false }) { Text("Cancel") } }) }
+        if (showPlaylistDialog) {
+            AlertDialog(
+                onDismissRequest = { showPlaylistDialog = false },
+                title = { Text("New Playlist", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White)) },
+                text = {
+                    OutlinedTextField(
+                        value = newPlaylistName,
+                        onValueChange = { newPlaylistName = it },
+                        placeholder = { Text("Playlist Name", color = Color.White.copy(alpha = 0.4f)) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Black.copy(alpha = 0.40f),
+                            unfocusedContainerColor = Color.Black.copy(alpha = 0.25f),
+                            focusedBorderColor = Color(0xFF00E676),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (newPlaylistName.isNotBlank()) {
+                                viewModel.createPlaylist(newPlaylistName)
+                                newPlaylistName = ""
+                                showPlaylistDialog = false
+                            }
+                        },
+                        enabled = newPlaylistName.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676), contentColor = Color.Black),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("Create", fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPlaylistDialog = false }) {
+                        Text("Cancel", color = Color.White.copy(alpha = 0.6f))
+                    }
+                },
+                shape = RoundedCornerShape(32.dp),
+                containerColor = Color(0xFF141A16).copy(alpha = 0.95f),
+                modifier = Modifier.border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.25f),
+                            Color.White.copy(alpha = 0.05f)
+                        )
+                    ),
+                    shape = RoundedCornerShape(32.dp)
+                )
+            )
+        }
         if (showDownloadDialog) {
-            AlertDialog(onDismissRequest = { if (downloadState !is DownloadState.Downloading) showDownloadDialog = false }, title = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFFE91E63)); Spacer(modifier = Modifier.width(12.dp)); Text("Import from Link") } },
-                text = { Column { if (isExtracting) { Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = Color(0xFFE91E63)); Spacer(modifier = Modifier.height(8.dp)); Text("Extracting...", style = MaterialTheme.typography.labelMedium) } } else { Text("Enter a YouTube or Spotify URL to extract and download audio.", style = MaterialTheme.typography.bodySmall, color = Color.Gray); Spacer(modifier = Modifier.height(16.dp)); TextField(value = youtubeUrl, onValueChange = { youtubeUrl = it }, placeholder = { Text("https://youtube.com/...") }, singleLine = true, isError = !isUrlValid && youtubeUrl.isNotBlank(), colors = TextFieldDefaults.colors(focusedContainerColor = Color.Black.copy(alpha = 0.05f), unfocusedContainerColor = Color.Black.copy(alpha = 0.03f), focusedIndicatorColor = Color(0xFFE91E63), unfocusedIndicatorColor = Color.Transparent), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()); if (!isUrlValid && youtubeUrl.isNotBlank()) Text("Invalid YouTube URL", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.Start).padding(top = 4.dp, start = 8.dp)); if (downloadState is DownloadState.Error) Text((downloadState as DownloadState.Error).message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp)) } } },
-                confirmButton = { if (downloadState is DownloadState.Downloading) { TextButton(onClick = { viewModel.cancelDownload() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Cancel Download") } } else { Button(onClick = { if (youtubeUrl.isNotBlank() && isUrlValid && isEngineReady) { val urlToDownload = youtubeUrl.trim(); youtubeUrl = ""; viewModel.fetchDownloadMetadata(urlToDownload); showDownloadDialog = false } }, enabled = youtubeUrl.isNotBlank() && isUrlValid && isEngineReady, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63), disabledContainerColor = Color(0xFFE91E63).copy(alpha = 0.5f)), shape = RoundedCornerShape(12.dp)) { Text(if (isEngineReady) "Download" else "Initializing...") } } },
-                dismissButton = { if (downloadState !is DownloadState.Downloading) { TextButton(onClick = { showDownloadDialog = false; viewModel.resetDownloadState() }) { Text("Close", color = Color.Gray) } } }, shape = RoundedCornerShape(28.dp), containerColor = Color.White
+            AlertDialog(
+                onDismissRequest = { if (downloadState !is DownloadState.Downloading) showDownloadDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF00E676))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Import from Link", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color.White))
+                    }
+                },
+                text = {
+                    Column {
+                        if (isExtracting) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = Color(0xFF00E676))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Extracting...", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                            }
+                        } else {
+                            Text("Enter a YouTube or Spotify URL to extract and download audio.", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = youtubeUrl,
+                                onValueChange = { youtubeUrl = it },
+                                placeholder = { Text("https://youtube.com/...", color = Color.White.copy(alpha = 0.4f)) },
+                                singleLine = true,
+                                isError = !isUrlValid && youtubeUrl.isNotBlank(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Black.copy(alpha = 0.40f),
+                                    unfocusedContainerColor = Color.Black.copy(alpha = 0.25f),
+                                    focusedBorderColor = Color(0xFF00E676),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (!isUrlValid && youtubeUrl.isNotBlank()) {
+                                Text("Invalid YouTube URL", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.Start).padding(top = 4.dp, start = 8.dp))
+                            }
+                            if (downloadState is DownloadState.Error) {
+                                Text((downloadState as DownloadState.Error).message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (downloadState is DownloadState.Downloading) {
+                        TextButton(onClick = { viewModel.cancelDownload() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                            Text("Cancel Download")
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                if (youtubeUrl.isNotBlank() && isUrlValid && isEngineReady) {
+                                    val urlToDownload = youtubeUrl.trim()
+                                    youtubeUrl = ""
+                                    viewModel.fetchDownloadMetadata(urlToDownload)
+                                    showDownloadDialog = false
+                                }
+                            },
+                            enabled = youtubeUrl.isNotBlank() && isUrlValid && isEngineReady,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00E676),
+                                contentColor = Color.Black,
+                                disabledContainerColor = Color(0xFF00E676).copy(alpha = 0.3f),
+                                disabledContentColor = Color.White.copy(alpha = 0.4f)
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(if (isEngineReady) "Download" else "Initializing...", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                dismissButton = {
+                    if (downloadState !is DownloadState.Downloading) {
+                        TextButton(onClick = { showDownloadDialog = false; viewModel.resetDownloadState() }) {
+                            Text("Close", color = Color.White.copy(alpha = 0.60f), fontWeight = FontWeight.Medium)
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(32.dp),
+                containerColor = Color(0xFF141A16).copy(alpha = 0.95f),
+                modifier = Modifier.border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.25f),
+                            Color.White.copy(alpha = 0.05f)
+                        )
+                    ),
+                    shape = RoundedCornerShape(32.dp)
+                )
             )
         }
         if (pendingDownloadItems.isNotEmpty()) {
-            val playlistItem = pendingDownloadItems.find { it.isPlaylist }; val firstTrack = pendingDownloadItems.find { !it.isPlaylist }
-            androidx.compose.ui.window.Dialog(onDismissRequest = { viewModel.clearPendingDownloadItems() }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-                var isVisible by remember { mutableStateOf(false) }; LaunchedEffect(Unit) { isVisible = true }
-                AnimatedVisibility(visible = isVisible, enter = fadeIn(tween(400)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)), exit = fadeOut(tween(300)) + scaleOut(targetScale = 0.8f)) {
-                    Box(modifier = Modifier.fillMaxWidth(0.9f).clip(RoundedCornerShape(32.dp)).background(Color.White.copy(alpha = 0.4f)).border(1.5.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(32.dp)).padding(24.dp)) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Box(modifier = Modifier.height(180.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { firstTrack?.thumbnailUrl?.let { url -> AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(130.dp).rotate(-10f).offset(x = (-30).dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp)).shadow(8.dp), contentScale = ContentScale.Crop) }; (playlistItem?.thumbnailUrl ?: firstTrack?.thumbnailUrl)?.let { url -> AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(140.dp).rotate(5f).offset(x = 20.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(24.dp)).shadow(16.dp), contentScale = ContentScale.Crop) } }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Download Playlist", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFF333333))); playlistItem?.let { Text(it.title, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF666666), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center) } }
-                            Text("How would you like to save these songs in your Library?", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF424242), textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 8.dp))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Button(onClick = { viewModel.startBatchDownload(asPlaylist = true) }, modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent), contentPadding = PaddingValues(), shape = RoundedCornerShape(16.dp)) { Box(modifier = Modifier.fillMaxSize().background(Brush.horizontalGradient(colors = listOf(Color(0xFFE040FB), Color(0xFFFF4081)))), contentAlignment = Alignment.Center) { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Save as Collection", fontWeight = FontWeight.Bold, color = Color.White) } } }
-                                Surface(onClick = { viewModel.startBatchDownload(asPlaylist = false) }, modifier = Modifier.fillMaxWidth().height(56.dp), color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.3f))) { Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = Color(0xFF424242)); Spacer(modifier = Modifier.width(12.dp)); Text("Individual Tracks", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = Color(0xFF424242))) } }
-                                TextButton(onClick = { isVisible = false; scope.launch { delay(300); viewModel.clearPendingDownloadItems() } }, modifier = Modifier.fillMaxWidth()) { Text("Cancel", color = Color(0xFF666666), fontWeight = FontWeight.Medium) }
+            val playlistItem = pendingDownloadItems.find { it.isPlaylist }
+            val firstTrack = pendingDownloadItems.find { !it.isPlaylist }
+            val trackCount = pendingDownloadItems.count { !it.isPlaylist }
+            val trackCountText = if (trackCount > 0) " ($trackCount tracks)" else ""
+
+            Dialog(
+                onDismissRequest = { viewModel.clearPendingDownloadItems() },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                var isVisible by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { isVisible = true }
+
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = fadeIn(tween(400)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
+                    exit = fadeOut(tween(300)) + scaleOut(targetScale = 0.8f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                isVisible = false
+                                scope.launch { delay(300); viewModel.clearPendingDownloadItems() }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.25f),
+                                            Color.White.copy(alpha = 0.05f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(32.dp)
+                                )
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* Prevent dismiss */ },
+                            shape = RoundedCornerShape(32.dp),
+                            color = Color(0xFF141A16).copy(alpha = 0.95f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Box(modifier = Modifier.height(180.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    firstTrack?.thumbnailUrl?.let { url ->
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(130.dp).rotate(-10f).offset(x = (-30).dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp)).shadow(8.dp),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    (playlistItem?.thumbnailUrl ?: firstTrack?.thumbnailUrl)?.let { url ->
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(140.dp).rotate(5f).offset(x = 20.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(24.dp)).shadow(16.dp),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("Download Playlist", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = Color.White))
+                                    playlistItem?.let {
+                                        Text(it.title, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                    }
+                                }
+
+                                Text(
+                                    text = "How would you like to save these songs$trackCountText in your Library?",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Button(
+                                        onClick = { viewModel.startBatchDownload(asPlaylist = true) },
+                                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676), contentColor = Color.Black),
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Folder, contentDescription = null, tint = Color.Black)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text("Save as Collection", fontWeight = FontWeight.Bold, color = Color.Black)
+                                        }
+                                    }
+
+                                    Surface(
+                                        onClick = { viewModel.startBatchDownload(asPlaylist = false) },
+                                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                                        color = Color.White.copy(alpha = 0.10f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+                                    ) {
+                                        Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, tint = Color.White)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text("Individual Tracks", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = Color.White))
+                                        }
+                                    }
+
+                                    TextButton(
+                                        onClick = { isVisible = false; scope.launch { delay(300); viewModel.clearPendingDownloadItems() } },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Cancel", color = Color.White.copy(alpha = 0.60f), fontWeight = FontWeight.Medium)
+                                    }
+                                }
                             }
                         }
                     }

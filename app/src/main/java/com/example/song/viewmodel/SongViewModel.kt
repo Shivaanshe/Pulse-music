@@ -118,6 +118,12 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     private val _isExtracting = MutableStateFlow(false)
     val isExtracting: StateFlow<Boolean> = _isExtracting.asStateFlow()
 
+    private val _extractionStatus = MutableStateFlow<String?>(null)
+    val extractionStatus: StateFlow<String?> = _extractionStatus.asStateFlow()
+
+    private val _extractionProgress = MutableStateFlow<Float?>(null)
+    val extractionProgress: StateFlow<Float?> = _extractionProgress.asStateFlow()
+
     private val _pendingStreamingItems = MutableStateFlow<List<StreamingItem>>(emptyList())
     val pendingStreamingItems: StateFlow<List<StreamingItem>> = _pendingStreamingItems.asStateFlow()
 
@@ -236,7 +242,28 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             }
             _isExtracting.value = true
             _extractionError.value = null
+            _extractionProgress.value = 0.15f
+            _extractionStatus.value = if (url.contains("spotify.com")) {
+                "Resolving Spotify track metadata..."
+            } else if (url.contains("/playlist") || url.contains("list=")) {
+                "Fetching YouTube playlist stream info..."
+            } else {
+                "Connecting to media link..."
+            }
             PulseLogger.log("Searching URL: $url")
+
+            val tickerJob = viewModelScope.launch {
+                delay(300)
+                _extractionProgress.value = 0.35f
+                val stages = listOf(0.45f, 0.58f, 0.70f, 0.82f, 0.88f)
+                for (stage in stages) {
+                    delay(500)
+                    if (_isExtracting.value) {
+                        _extractionProgress.value = stage
+                    } else break
+                }
+            }
+
             try {
                 val items = if (url.contains("spotify.com")) {
                     SpotifyResolver.resolve(url, repository)
@@ -244,8 +271,13 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                     YoutubeStreamHandler.getMetadata(url)
                 }
                 
+                tickerJob.cancel()
+                _extractionProgress.value = 0.95f
                 Log.d("SongViewModel", "Extraction results for $url: ${items.size} items")
                 PulseLogger.log("Found ${items.size} items for extraction.")
+                _extractionStatus.value = "Found ${items.size} track${if (items.size > 1) "s" else ""}! Finalizing..."
+                _extractionProgress.value = 1.00f
+                delay(350)
                 
                 if (items.isEmpty()) {
                     _extractionError.value = if (url.contains("spotify.com")) "Could not find this track on YouTube" else "No videos found in this URL"
@@ -260,6 +292,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                     _pendingStreamingItems.value = items
                 }
             } catch (e: Exception) {
+                tickerJob.cancel()
                 val errorMsg = e.localizedMessage ?: ""
                 PulseLogger.log("Extraction error: $errorMsg", isError = true)
                 val isOffline = !isConnectedToInternet() ||
@@ -281,6 +314,8 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 e.printStackTrace()
             } finally {
                 _isExtracting.value = false
+                _extractionStatus.value = null
+                _extractionProgress.value = null
             }
         }
     }
