@@ -17,6 +17,9 @@ import com.example.song.data.repository.SongRepository
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
+import com.example.song.data.preferences.CachePreferences
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -54,6 +57,13 @@ class SongApplication : Application(), ImageLoaderFactory {
     }
 
     override fun newImageLoader(): ImageLoader {
+        val totalLimitMb = try {
+            runBlocking { CachePreferences(this@SongApplication).songCacheSizeMb.first() }
+        } catch (e: Exception) {
+            CachePreferences.DEFAULT_SONG_CACHE_MB
+        }
+        val imageCacheMb = maxOf(20, totalLimitMb / 6)
+
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -63,8 +73,7 @@ class SongApplication : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.02) // Roughly 50MB on modern devices, or we can use fixed size
-                    .maxSizeBytes(50L * 1024 * 1024) // Strictly 50MB
+                    .maxSizeBytes(imageCacheMb.toLong() * 1024 * 1024L)
                     .build()
             }
             .okHttpClient { okHttpClient }
@@ -76,9 +85,16 @@ class SongApplication : Application(), ImageLoaderFactory {
         fun getInstance(): SongApplication = instance
     }
 
-    @androidx.media3.common.util.UnstableApi
+    @UnstableApi
     private fun initPlayerCache() {
-        val cacheSize: Long = 250L * 1024 * 1024 
+        val totalLimitMb = try {
+            runBlocking { CachePreferences(this@SongApplication).songCacheSizeMb.first() }
+        } catch (e: Exception) {
+            CachePreferences.DEFAULT_SONG_CACHE_MB
+        }
+        val imageCacheMb = maxOf(20, totalLimitMb / 6)
+        val audioCacheMb = maxOf(80, totalLimitMb - imageCacheMb)
+        val cacheSize: Long = audioCacheMb.toLong() * 1024 * 1024L
         val cacheEvictor = LeastRecentlyUsedCacheEvictor(cacheSize)
         val databaseProvider = StandaloneDatabaseProvider(this)
         var cacheDirFile = File(cacheDir, "media_cache")
@@ -116,6 +132,36 @@ class SongApplication : Application(), ImageLoaderFactory {
                     _cachedKeys.value = keys
                 }
                 delay(2000)
+            }
+        }
+    }
+
+    @UnstableApi
+    fun updateCacheConfig(totalLimitMb: Int) {
+        val validatedTotalMb = totalLimitMb.coerceAtLeast(CachePreferences.MIN_SONG_CACHE_MB)
+        val imageCacheMb = maxOf(20, validatedTotalMb / 6)
+        val audioCacheMb = maxOf(80, validatedTotalMb - imageCacheMb)
+        val cacheSizeBytes = audioCacheMb.toLong() * 1024 * 1024L
+
+        try {
+            playerCache?.release()
+        } catch (e: Exception) {
+            Log.e("SongApplication", "Error releasing playerCache for update", e)
+        }
+
+        val cacheEvictor = LeastRecentlyUsedCacheEvictor(cacheSizeBytes)
+        val databaseProvider = StandaloneDatabaseProvider(this)
+        var cacheDirFile = File(cacheDir, "media_cache")
+
+        try {
+            playerCache = SimpleCache(cacheDirFile, cacheEvictor, databaseProvider)
+        } catch (e: Exception) {
+            Log.e("SongApplication", "Failed to update playerCache", e)
+            cacheDirFile = File(cacheDir, "media_cache_fallback_${System.currentTimeMillis()}")
+            try {
+                playerCache = SimpleCache(cacheDirFile, cacheEvictor, databaseProvider)
+            } catch (e2: Exception) {
+                playerCache = null
             }
         }
     }
