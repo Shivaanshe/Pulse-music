@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.song"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "3.4.2"
+        versionCode = 4
+        versionName = "3.4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
