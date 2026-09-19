@@ -31,20 +31,36 @@ fun QueueSnackbar(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var displayMessage by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(message) {
         if (message != null) {
+            displayMessage = message
             delay(3500L)
             onDismiss()
+        } else {
+            delay(500L)
+            displayMessage = null
         }
     }
 
+    val currentText = message ?: displayMessage
+
     AnimatedVisibility(
         visible = message != null,
-        enter = fadeIn(animationSpec = tween(durationMillis = 250)),
-        exit = fadeOut(animationSpec = tween(durationMillis = 200)),
+        enter = fadeIn(animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)) +
+                slideInVertically(
+                    animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                    initialOffsetY = { fullHeight -> fullHeight * 2 }
+                ),
+        exit = fadeOut(animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)) +
+               slideOutVertically(
+                   animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                   targetOffsetY = { fullHeight -> fullHeight * 2 }
+               ),
         modifier = modifier
     ) {
-        if (message != null) {
+        if (currentText != null) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -83,7 +99,7 @@ fun QueueSnackbar(
                         Spacer(modifier = Modifier.width(12.dp))
 
                         Text(
-                            text = message,
+                            text = currentText,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 color = Color.White.copy(alpha = 0.88f),
                                 fontWeight = FontWeight.Medium,
