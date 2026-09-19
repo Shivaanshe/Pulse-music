@@ -35,6 +35,15 @@ fun SongOptionsMenuSheet(
     onDismissRequest: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val favoriteSongs by viewModel.favoriteSongs.collectAsState()
+
+    val isFav = remember(favoriteSongs, song) {
+        song.isFavorite || favoriteSongs.any {
+            it.id == song.id ||
+            (it.audioUri.isNotEmpty() && it.audioUri == song.audioUri) ||
+            (it.title.equals(song.title, ignoreCase = true) && it.artist.equals(song.artist, ignoreCase = true))
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -169,12 +178,12 @@ fun SongOptionsMenuSheet(
 
                     // Favorite / Unfavorite
                     OptionRowItem(
-                        icon = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        iconTint = if (song.isFavorite) Color.Red else Color.White.copy(alpha = 0.88f),
-                        title = if (song.isFavorite) "Remove from Favorites" else "Add to Favorites",
+                        icon = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        iconTint = if (isFav) Color.Red else Color.White.copy(alpha = 0.88f),
+                        title = if (isFav) "Remove from Favorites" else "Add to Favorites",
                         subtitle = null,
                         onClick = {
-                            viewModel.updateFavorite(song, !song.isFavorite)
+                            viewModel.updateFavorite(song, !isFav)
                             onDismissRequest()
                         }
                     )
