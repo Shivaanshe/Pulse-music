@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -82,6 +83,18 @@ fun PlayerScreen(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = { viewModel.openQueueSheet() },
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .background(Color.White.copy(alpha = 0.3f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                                contentDescription = "Open Queue",
+                                tint = Color(0xFF424242)
+                            )
+                        }
                         IconButton(
                             onClick = { viewModel.toggleRepeatMode() },
                             modifier = Modifier

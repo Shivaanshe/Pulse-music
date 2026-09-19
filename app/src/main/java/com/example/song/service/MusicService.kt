@@ -343,6 +343,7 @@ class MusicService : MediaSessionService() {
                 .build()
             val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                 .add(SessionCommand("PLAY_QUEUE", Bundle.EMPTY))
+                .add(SessionCommand("UPDATE_QUEUE", Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailablePlayerCommands(playerCommands)
@@ -438,6 +439,70 @@ class MusicService : MediaSessionService() {
                             player.setMediaItems(mediaItems, index, 0L)
                             player.prepare()
                             player.play()
+                        }
+                    }
+                }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            } else if (customCommand.customAction == "UPDATE_QUEUE") {
+                val index = args.getInt("index", if (player.mediaItemCount > 0) player.currentMediaItemIndex else 0)
+                val position = if (player.playbackState != Player.STATE_IDLE) player.currentPosition else 0L
+                val isPlaying = player.isPlaying
+                val ids = args.getIntegerArrayList("ids") ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                    .putString(KEY_LAST_QUEUE_IDS, ids.joinToString(","))
+                    .putInt(KEY_LAST_INDEX, index)
+                    .apply()
+
+                serviceScope.launch {
+                    val repository = SongApplication.getInstance().repository
+
+                    val streamingIds = ids.filter { it >= 1_000_000 }.map { it - 1_000_000 }
+                    val localIds = ids.filter { it < 1_000_000 }
+
+                    val streamingItems = if (streamingIds.isNotEmpty()) repository.getStreamingItemsByIdsSync(streamingIds) else emptyList()
+                    val localSongs = if (localIds.isNotEmpty()) repository.getSongsByIdsSync(localIds) else emptyList()
+
+                    val allItemsMap = mutableMapOf<Int, Song>()
+                    localSongs.forEach { allItemsMap[it.id] = it }
+                    streamingItems.forEach { item ->
+                        val song = item.toSong().copy(id = 1_000_000 + item.id)
+                        allItemsMap[1_000_000 + item.id] = song
+                    }
+
+                    val songs = ids.mapNotNull { allItemsMap[it] }
+
+                    if (songs.isNotEmpty()) {
+                        val mediaItems = songs.map { mapSongToMediaItem(it) }
+                        currentQueue = songs
+                        withContext(Dispatchers.Main) {
+                            val safeIndex = index.coerceIn(0, mediaItems.size - 1)
+                            val currentIdx = player.currentMediaItemIndex
+                            val currentItem = player.currentMediaItem
+                            val targetItem = mediaItems[safeIndex]
+
+                            if (currentItem != null &&
+                                currentIdx in 0 until player.mediaItemCount &&
+                                currentItem.mediaId == targetItem.mediaId) {
+                                // 🛡️ Currently playing track is unchanged: update playlist around it without stopping audio
+                                if (player.mediaItemCount > currentIdx + 1) {
+                                    player.removeMediaItems(currentIdx + 1, player.mediaItemCount)
+                                }
+                                if (currentIdx > 0) {
+                                    player.removeMediaItems(0, currentIdx)
+                                }
+                                if (safeIndex > 0) {
+                                    val itemsBefore = mediaItems.subList(0, safeIndex)
+                                    player.addMediaItems(0, itemsBefore)
+                                }
+                                if (safeIndex + 1 < mediaItems.size) {
+                                    val itemsAfter = mediaItems.subList(safeIndex + 1, mediaItems.size)
+                                    player.addMediaItems(player.mediaItemCount, itemsAfter)
+                                }
+                            } else {
+                                player.setMediaItems(mediaItems, safeIndex, position)
+                                if (isPlaying) player.play()
+                            }
                         }
                     }
                 }

@@ -100,6 +100,32 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentQueue = MutableStateFlow<List<Song>>(emptyList())
     val currentQueue: StateFlow<List<Song>> = _currentQueue.asStateFlow()
 
+    private val _unshuffledQueue = MutableStateFlow<List<Song>>(emptyList())
+    val unshuffledQueue: StateFlow<List<Song>> = _unshuffledQueue.asStateFlow()
+
+    private val _queueContextTitle = MutableStateFlow("Up Next")
+    val queueContextTitle: StateFlow<String> = _queueContextTitle.asStateFlow()
+
+    private val _isShuffleEnabled = MutableStateFlow(false)
+    val isShuffleEnabled: StateFlow<Boolean> = _isShuffleEnabled.asStateFlow()
+
+    private val _showQueueSheet = MutableStateFlow(false)
+    val showQueueSheet: StateFlow<Boolean> = _showQueueSheet.asStateFlow()
+
+    private val _selectedSongForOptions = MutableStateFlow<Song?>(null)
+    val selectedSongForOptions: StateFlow<Song?> = _selectedSongForOptions.asStateFlow()
+
+    private val _queueSnackbarMessage = MutableStateFlow<String?>(null)
+    val queueSnackbarMessage: StateFlow<String?> = _queueSnackbarMessage.asStateFlow()
+
+    private val _sleepTimerMinutes = MutableStateFlow<Int?>(null)
+    val sleepTimerMinutes: StateFlow<Int?> = _sleepTimerMinutes.asStateFlow()
+
+    private val _sleepTimerRemainingMs = MutableStateFlow<Long?>(null)
+    val sleepTimerRemainingMs: StateFlow<Long?> = _sleepTimerRemainingMs.asStateFlow()
+
+    private var sleepTimerJob: Job? = null
+
     private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
     val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
 
@@ -769,14 +795,24 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         return repository.getSongsInPlaylist(playlistId)
     }
 
-    fun playSong(song: Song, queue: List<Song> = _allSongs.value) {
+    fun playSong(song: Song, queue: List<Song> = _allSongs.value, contextTitle: String? = null) {
         if (queue.isEmpty()) return
         
-        _currentQueue.value = queue
+        contextTitle?.let { _queueContextTitle.value = it } ?: run { _queueContextTitle.value = "Playing \"${song.title}\"" }
+        
+        val targetQueue = if (_isShuffleEnabled.value) {
+            val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+            val head = queue.subList(0, index + 1)
+            val tail = queue.subList(index + 1, queue.size).shuffled()
+            head + tail
+        } else queue
+
+        _currentQueue.value = targetQueue
+        _unshuffledQueue.value = queue
         PulseLogger.log("Playing local song: ${song.title}")
         
-        val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        val ids = queue.mapTo(ArrayList()) { it.id }
+        val index = targetQueue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+        val ids = targetQueue.mapTo(ArrayList()) { it.id }
         
         mediaController?.let { controller ->
             val args = Bundle().apply {
@@ -813,13 +849,128 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             .build()
     }
 
-    fun playStreamingItem(item: StreamingItem, queue: List<StreamingItem>) {
+    fun playStreamingItem(item: StreamingItem, queue: List<StreamingItem>, contextTitle: String? = null) {
         val filteredQueue = queue.filter { !it.isPlaylist }
-        val index = filteredQueue.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
-        val ids = filteredQueue.mapTo(ArrayList()) { 1_000_000 + it.id }
-        PulseLogger.log("Playing streaming item: ${item.title}")
+        val mappedQueue = filteredQueue.map {
+            Song(
+                id = 1_000_000 + it.id,
+                title = it.title,
+                artist = it.artist ?: "Unknown Artist",
+                audioUri = it.youtubeUrl,
+                imageUrl = it.thumbnailUrl,
+                duration = it.duration
+            )
+        }
         
-        _currentQueue.value = filteredQueue.map {
+        contextTitle?.let { _queueContextTitle.value = it } ?: run { _queueContextTitle.value = "Playing \"${item.title}\"" }
+
+        val targetSong = mappedQueue.find { it.id == (1_000_000 + item.id) } ?: mappedQueue.firstOrNull() ?: return
+        
+        val targetQueue = if (_isShuffleEnabled.value) {
+            val idx = mappedQueue.indexOfFirst { it.id == targetSong.id }.coerceAtLeast(0)
+            val head = mappedQueue.subList(0, idx + 1)
+            val tail = mappedQueue.subList(idx + 1, mappedQueue.size).shuffled()
+            head + tail
+        } else mappedQueue
+
+        _currentQueue.value = targetQueue
+        _unshuffledQueue.value = mappedQueue
+
+        val index = targetQueue.indexOfFirst { it.id == targetSong.id }.coerceAtLeast(0)
+        val ids = targetQueue.mapTo(ArrayList()) { it.id }
+        PulseLogger.log("Playing streaming item: ${item.title}")
+
+        mediaController?.let { controller ->
+            val args = Bundle().apply {
+                putIntegerArrayList("ids", ids)
+                putInt("index", index)
+                putBoolean("isStreaming", true)
+            }
+            controller.sendCustomCommand(SessionCommand("PLAY_QUEUE", Bundle.EMPTY), args)
+        }
+    }
+
+    fun openQueueSheet() {
+        _showQueueSheet.value = true
+    }
+
+    fun closeQueueSheet() {
+        _showQueueSheet.value = false
+    }
+
+    fun openSongOptions(song: Song) {
+        _selectedSongForOptions.value = song
+    }
+
+    fun closeSongOptions() {
+        _selectedSongForOptions.value = null
+    }
+
+    fun clearQueueSnackbar() {
+        _queueSnackbarMessage.value = null
+    }
+
+    fun updateQueueContextTitle(title: String) {
+        _queueContextTitle.value = title
+    }
+
+    fun addToQueue(songs: List<Song>, playNext: Boolean = false, contextTitle: String? = null) {
+        if (songs.isEmpty()) return
+
+        contextTitle?.let { _queueContextTitle.value = it }
+
+        val currentList = _currentQueue.value.toMutableList()
+        val unshuffledList = _unshuffledQueue.value.toMutableList()
+
+        if (currentList.isEmpty()) {
+            _currentQueue.value = songs
+            _unshuffledQueue.value = songs
+            if (_currentPlayingSong.value == null) {
+                playSong(songs.first(), songs)
+            } else {
+                updateServiceQueue()
+            }
+        } else {
+            val currentPlayingId = _currentPlayingSong.value?.id
+            val currentIndex = currentList.indexOfFirst { it.id == currentPlayingId }.coerceAtLeast(0)
+
+            if (playNext) {
+                val insertIndex = (currentIndex + 1).coerceAtMost(currentList.size)
+                currentList.addAll(insertIndex, songs)
+                
+                val unshuffledIndex = unshuffledList.indexOfFirst { it.id == currentPlayingId }
+                val unshuffledInsertIndex = if (unshuffledIndex >= 0) (unshuffledIndex + 1).coerceAtMost(unshuffledList.size) else unshuffledList.size
+                unshuffledList.addAll(unshuffledInsertIndex, songs)
+            } else {
+                currentList.addAll(songs)
+                unshuffledList.addAll(songs)
+            }
+
+            if (_isShuffleEnabled.value) {
+                val head = currentList.subList(0, currentIndex + 1)
+                val tail = currentList.subList(currentIndex + 1, currentList.size).shuffled()
+                _currentQueue.value = head + tail
+            } else {
+                _currentQueue.value = currentList
+            }
+            _unshuffledQueue.value = unshuffledList
+            updateServiceQueue()
+        }
+
+        val text = if (songs.size == 1) {
+            "Added \"${songs.first().title}\" to Queue"
+        } else {
+            "Added ${songs.size} songs to Queue"
+        }
+        _queueSnackbarMessage.value = text
+    }
+
+    fun addSelectedToQueue(playNext: Boolean = false) {
+        val selectedSongIdsSet = _selectedSongIds.value
+        val selectedStreamingIdsSet = _selectedStreamingIds.value
+
+        val localSongs = _allSongs.value.filter { it.id in selectedSongIdsSet }
+        val streamingSongs = _allStreamingSongs.value.filter { it.id in selectedStreamingIdsSet }.map {
             Song(
                 id = 1_000_000 + it.id,
                 title = it.title,
@@ -830,13 +981,117 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        val allSelected = localSongs + streamingSongs
+        if (allSelected.isNotEmpty()) {
+            addToQueue(allSelected, playNext = playNext)
+            toggleSelectionMode(false)
+        }
+    }
+
+    fun removeFromQueue(index: Int) {
+        val currentList = _currentQueue.value.toMutableList()
+        if (index in currentList.indices) {
+            val removedSong = currentList.removeAt(index)
+            _currentQueue.value = currentList
+            
+            val unshuffledList = _unshuffledQueue.value.toMutableList()
+            unshuffledList.remove(removedSong)
+            _unshuffledQueue.value = unshuffledList
+
+            updateServiceQueue()
+        }
+    }
+
+    fun reorderQueue(fromIndex: Int, toIndex: Int) {
+        val currentList = _currentQueue.value.toMutableList()
+        if (fromIndex in currentList.indices && toIndex in currentList.indices) {
+            val item = currentList.removeAt(fromIndex)
+            currentList.add(toIndex, item)
+            _currentQueue.value = currentList
+            updateServiceQueue()
+        }
+    }
+
+    fun clearQueue() {
+        val currentPlaying = _currentPlayingSong.value
+        if (currentPlaying != null) {
+            _currentQueue.value = listOf(currentPlaying)
+            _unshuffledQueue.value = listOf(currentPlaying)
+        } else {
+            _currentQueue.value = emptyList()
+            _unshuffledQueue.value = emptyList()
+        }
+        updateServiceQueue()
+    }
+
+    fun toggleShuffle() {
+        val newShuffleState = !_isShuffleEnabled.value
+        _isShuffleEnabled.value = newShuffleState
+
+        val currentPlaying = _currentPlayingSong.value
+        val currentList = _currentQueue.value
+
+        if (newShuffleState) {
+            if (_unshuffledQueue.value.isEmpty()) {
+                _unshuffledQueue.value = currentList
+            }
+            if (currentPlaying != null && currentList.isNotEmpty()) {
+                val currentIndex = currentList.indexOfFirst { it.id == currentPlaying.id }.coerceAtLeast(0)
+                val head = currentList.subList(0, currentIndex + 1)
+                val tail = currentList.subList(currentIndex + 1, currentList.size).shuffled()
+                _currentQueue.value = head + tail
+            } else {
+                _currentQueue.value = currentList.shuffled()
+            }
+        } else {
+            if (_unshuffledQueue.value.isNotEmpty()) {
+                _currentQueue.value = _unshuffledQueue.value
+            }
+        }
+        updateServiceQueue()
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        if (minutes <= 0) {
+            _sleepTimerMinutes.value = null
+            _sleepTimerRemainingMs.value = null
+        } else {
+            _sleepTimerMinutes.value = minutes
+            val totalMs = minutes * 60 * 1000L
+            _sleepTimerRemainingMs.value = totalMs
+
+            sleepTimerJob = viewModelScope.launch {
+                var remaining = totalMs
+                while (remaining > 0 && isActive) {
+                    delay(1000L)
+                    remaining -= 1000L
+                    _sleepTimerRemainingMs.value = remaining
+                }
+                if (isActive) {
+                    mediaController?.pause()
+                    _sleepTimerMinutes.value = null
+                    _sleepTimerRemainingMs.value = null
+                    PulseLogger.log("Sleep timer expired. Playback paused.")
+                }
+            }
+        }
+    }
+
+    fun updateServiceQueue() {
+        val queue = _currentQueue.value
+        if (queue.isEmpty()) return
+
+        val currentPlayingId = _currentPlayingSong.value?.id
+        val index = queue.indexOfFirst { it.id == currentPlayingId }.coerceAtLeast(0)
+        val ids = queue.mapTo(ArrayList()) { it.id }
+
         mediaController?.let { controller ->
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
                 putInt("index", index)
-                putBoolean("isStreaming", true)
             }
-            controller.sendCustomCommand(SessionCommand("PLAY_QUEUE", Bundle.EMPTY), args)
+            controller.sendCustomCommand(SessionCommand("UPDATE_QUEUE", Bundle.EMPTY), args)
         }
     }
 

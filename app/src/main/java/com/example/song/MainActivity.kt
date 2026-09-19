@@ -38,6 +38,10 @@ import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.compose.ui.Alignment
+import com.example.song.ui.components.QueueBottomSheet
+import com.example.song.ui.components.SongOptionsMenuSheet
+import com.example.song.ui.components.QueueSnackbar
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
@@ -219,6 +223,10 @@ fun MainApp(viewModel: SongViewModel, otaViewModel: OtaUpdateViewModel) {
     val showSettingsModal by otaViewModel.showSettingsModal.collectAsState()
     val toastMessage by otaViewModel.toastMessage.collectAsState()
 
+    val showQueueSheet by viewModel.showQueueSheet.collectAsState()
+    val selectedSongForOptions by viewModel.selectedSongForOptions.collectAsState()
+    val queueSnackbarMessage by viewModel.queueSnackbarMessage.collectAsState()
+
     LaunchedEffect(Unit) {
         otaViewModel.initializeOnStart()
     }
@@ -382,6 +390,40 @@ fun MainApp(viewModel: SongViewModel, otaViewModel: OtaUpdateViewModel) {
             }
             if (showSettingsModal) {
                 OtaSettingsDialog(otaViewModel)
+            }
+
+            // Queue Bottom Sheet
+            if (showQueueSheet) {
+                QueueBottomSheet(
+                    viewModel = viewModel,
+                    onDismissRequest = { viewModel.closeQueueSheet() }
+                )
+            }
+
+            // Song Context Menu Options Sheet
+            selectedSongForOptions?.let { song ->
+                SongOptionsMenuSheet(
+                    song = song,
+                    viewModel = viewModel,
+                    onDismissRequest = { viewModel.closeSongOptions() }
+                )
+            }
+
+            // Floating Queue Confirmation Toast Pill
+            Box(modifier = Modifier.fillMaxSize()) {
+                val snackbarBottomPadding = when {
+                    showBottomBar && effectiveSong != null -> 168.dp
+                    showBottomBar -> 88.dp
+                    else -> 24.dp
+                }
+                QueueSnackbar(
+                    message = queueSnackbarMessage,
+                    onOpenQueue = { viewModel.openQueueSheet() },
+                    onDismiss = { viewModel.clearQueueSnackbar() },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = snackbarBottomPadding)
+                )
             }
 
             // Floating Debug Overlay

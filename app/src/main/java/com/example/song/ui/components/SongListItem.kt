@@ -38,6 +38,7 @@ fun SongListItem(
     onDelete: () -> Unit,
     isSelected: Boolean = false,
     onLongClick: () -> Unit = {},
+    onOptionsClick: (() -> Unit)? = null,
     selectionMode: Boolean = false,
     isPlaying: Boolean = false,
     isArrangeMode: Boolean = false,
@@ -181,6 +182,16 @@ fun SongListItem(
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
+                }
+                if (onOptionsClick != null && !selectionMode && !isArrangeMode) {
+                    IconButton(onClick = onOptionsClick) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Song Options",
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }

@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.song.data.model.Song
 
 import com.example.song.ui.spotlight.SpotlightController
 import com.example.song.ui.spotlight.TourStep
@@ -534,7 +535,9 @@ fun DiscoverScreen(
                                 val isGhostSlot = !isDragging && targetIndex == index
                                 Box(modifier = Modifier.fillMaxWidth().animateItem().zIndex(if (isGhostSlot) 1f else 0f).onGloballyPositioned { if (measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat() }.graphicsLayer { translationY = itemTranslationY }) {
                                     if (isGhostSlot) { Box(modifier = Modifier.fillMaxWidth().height(with(LocalDensity.current) { measuredItemHeightPx.toDp() }).graphicsLayer { translationY = -itemTranslationY }.padding(horizontal = 24.dp, vertical = 8.dp).border(width = 2.dp, brush = Brush.linearGradient(colors = listOf(Color(0xFFFF4081).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.2f))), shape = RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) { Text("DROP SONG HERE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF4081).copy(alpha = 0.6f), letterSpacing = 2.sp)) } }
-                                    Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) { StreamingItemCard(item = item, enabled = isEngineReady, isResolving = resolvingUrlId == item.id, isPlaying = isPlaying && isCurrentItemPlaying, isArrangeMode = isArrangeModeEnabled, isDragging = false, onClick = { if (isSelectionMode) viewModel.toggleStreamingSelection(item.id) else if (isEngineReady) { if (isCurrentItemPlaying) viewModel.togglePlayPause() else { viewModel.playStreamingItem(item, localSingleSongs); onSongClick() } } }, onFavoriteToggle = { viewModel.toggleStreamingFavorite(item) }, onDelete = { viewModel.deleteStreamingItem(item) }, isSelected = selectedStreamingIds.contains(item.id), onLongClick = { viewModel.toggleSelectionMode(true); viewModel.toggleStreamingSelection(item.id) }, selectionMode = isSelectionMode) }
+                                    Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) { StreamingItemCard(item = item, enabled = isEngineReady, isResolving = resolvingUrlId == item.id, isPlaying = isPlaying && isCurrentItemPlaying, isArrangeMode = isArrangeModeEnabled, isDragging = false, onClick = { if (isSelectionMode) viewModel.toggleStreamingSelection(item.id) else if (isEngineReady) { if (isCurrentItemPlaying) viewModel.togglePlayPause() else { viewModel.playStreamingItem(item, localSingleSongs); onSongClick() } } }, onFavoriteToggle = { viewModel.toggleStreamingFavorite(item) }, onDelete = { viewModel.deleteStreamingItem(item) }, isSelected = selectedStreamingIds.contains(item.id), onLongClick = { viewModel.toggleSelectionMode(true); viewModel.toggleStreamingSelection(item.id) }, onOptionsClick = { viewModel.openSongOptions(
+                                        Song(id = 1_000_000 + item.id, title = item.title, artist = item.artist ?: "Unknown Artist", audioUri = item.youtubeUrl, imageUrl = item.thumbnailUrl, duration = item.duration)
+                                    ) }, selectionMode = isSelectionMode) }
                                 }
                             }
                         } else if (playlists.isEmpty() && singleSongs.isEmpty() && !isExtracting) {
@@ -611,7 +614,9 @@ fun DiscoverScreen(
                             val isGhostSlot = !isDragging && targetIndex == index
                             Box(modifier = Modifier.fillMaxWidth().animateItem().zIndex(if (isGhostSlot) 1f else 0f).onGloballyPositioned { if (measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat() }.graphicsLayer { translationY = itemTranslationY }) {
                                 if (isGhostSlot) { Box(modifier = Modifier.fillMaxWidth().height(with(LocalDensity.current) { measuredItemHeightPx.toDp() }).graphicsLayer { translationY = -itemTranslationY }.padding(horizontal = 24.dp, vertical = 8.dp).border(width = 2.dp, brush = Brush.linearGradient(colors = listOf(Color(0xFFFF4081).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.2f))), shape = RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) { Text("DROP SONG HERE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF4081).copy(alpha = 0.6f), letterSpacing = 2.sp)) } }
-                                Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) { StreamingItemCard(item = item, enabled = isEngineReady, isResolving = resolvingUrlId == item.id, isPlaying = isPlaying && isCurrentItemPlaying, isArrangeMode = isArrangeModeEnabled, isDragging = false, onClick = { if (isSelectionMode) viewModel.toggleStreamingSelection(item.id) else if (isEngineReady) { if (isCurrentItemPlaying) viewModel.togglePlayPause() else { viewModel.playStreamingItem(item, localPlaylistItems); onSongClick() } } }, onFavoriteToggle = { viewModel.toggleStreamingFavorite(item) }, onDelete = { viewModel.deleteStreamingItem(item) }, isSelected = selectedStreamingIds.contains(item.id), onLongClick = { viewModel.toggleSelectionMode(true); viewModel.toggleStreamingSelection(item.id) }, selectionMode = isSelectionMode) }
+                                Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) { StreamingItemCard(item = item, enabled = isEngineReady, isResolving = resolvingUrlId == item.id, isPlaying = isPlaying && isCurrentItemPlaying, isArrangeMode = isArrangeModeEnabled, isDragging = false, onClick = { if (isSelectionMode) viewModel.toggleStreamingSelection(item.id) else if (isEngineReady) { if (isCurrentItemPlaying) viewModel.togglePlayPause() else { viewModel.playStreamingItem(item, localPlaylistItems); onSongClick() } } }, onFavoriteToggle = { viewModel.toggleStreamingFavorite(item) }, onDelete = { viewModel.deleteStreamingItem(item) }, isSelected = selectedStreamingIds.contains(item.id), onLongClick = { viewModel.toggleSelectionMode(true); viewModel.toggleStreamingSelection(item.id) }, onOptionsClick = { viewModel.openSongOptions(
+                                    Song(id = 1_000_000 + item.id, title = item.title, artist = item.artist ?: "Unknown Artist", audioUri = item.youtubeUrl, imageUrl = item.thumbnailUrl, duration = item.duration)
+                                ) }, selectionMode = isSelectionMode) }
                             }
                         }
                     }
@@ -849,9 +854,13 @@ fun DiscoverScreen(
         }
         AnimatedVisibility(visible = isSelectionMode, enter = slideInVertically { -it } + fadeIn(), exit = slideOutVertically { -it } + fadeOut(), modifier = Modifier.zIndex(10f)) {
             Surface(modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), shape = RoundedCornerShape(24.dp), color = Color.White.copy(alpha = 0.85f), tonalElevation = 8.dp, border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))) {
-                Row(modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = { viewModel.toggleSelectionMode(false) }) { Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF424242)) }
-                    Spacer(modifier = Modifier.width(16.dp)); Text(text = "${selectedStreamingIds.size} Selected", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color(0xFF333333)), modifier = Modifier.weight(1f))
-                    IconButton(onClick = { val count = selectedStreamingIds.size; viewModel.deleteSelectedItems(); scope.launch { snackbarHostState.showSnackbar("Deleted $count items") } }) { Icon(Icons.Default.Delete, contentDescription = "Delete Selected", tint = Color.Red) } }
+                Row(modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { viewModel.toggleSelectionMode(false) }) { Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF424242)) }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(text = "${selectedStreamingIds.size} Selected", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = Color(0xFF333333)), modifier = Modifier.weight(1f))
+                    IconButton(onClick = { viewModel.addSelectedToQueue(playNext = false) }) { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Add Selected to Queue", tint = Color(0xFF4CAF50)) }
+                    IconButton(onClick = { val count = selectedStreamingIds.size; viewModel.deleteSelectedItems(); scope.launch { snackbarHostState.showSnackbar("Deleted $count items") } }) { Icon(Icons.Default.Delete, contentDescription = "Delete Selected", tint = Color.Red) }
+                }
             }
         }
         if (selectedPlaylist != null && !isSelectionMode) FloatingActionButton(onClick = { showAddSongDialog = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp).padding(bottom = 80.dp), containerColor = Color.White.copy(alpha = 0.8f), contentColor = Color(0xFFE91E63), shape = CircleShape) { Icon(Icons.Default.Add, contentDescription = "Add Song to Collection") }
@@ -935,7 +944,7 @@ fun DiscoverScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving: Boolean = false, isPlaying: Boolean = false, onClick: () -> Unit, onFavoriteToggle: () -> Unit, onDelete: () -> Unit, isSelected: Boolean = false, onLongClick: () -> Unit = {}, selectionMode: Boolean = false, isArrangeMode: Boolean = false, isDragging: Boolean = false) {
+fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving: Boolean = false, isPlaying: Boolean = false, onClick: () -> Unit, onFavoriteToggle: () -> Unit, onDelete: () -> Unit, isSelected: Boolean = false, onLongClick: () -> Unit = {}, onOptionsClick: (() -> Unit)? = null, selectionMode: Boolean = false, isArrangeMode: Boolean = false, isDragging: Boolean = false) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
     val pulseScale by infiniteTransition.animateFloat(initialValue = 1f, targetValue = 1.02f, animationSpec = infiniteRepeatable(animation = tween(1200, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse), label = "PulseScale")
@@ -957,6 +966,11 @@ fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving:
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Color(0xFFE91E63))
                 else { IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(32.dp)) { Icon(imageVector = if (item.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = "Favorite", tint = if (item.isFavorite) Color.Red else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(20.dp)) }; Spacer(modifier = Modifier.width(8.dp)); IconButton(onClick = onClick, modifier = Modifier.background(Color.White.copy(alpha = 0.2f), CircleShape).size(32.dp), enabled = enabled) { Icon(imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = Color.White, modifier = Modifier.size(20.dp)) } }
+                if (onOptionsClick != null && !selectionMode && !isArrangeMode) {
+                    IconButton(onClick = onOptionsClick) {
+                        Icon(imageVector = Icons.Default.MoreVert, contentDescription = "Options", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(22.dp))
+                    }
+                }
             }
         }
     }
