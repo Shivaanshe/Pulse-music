@@ -287,25 +287,31 @@ class MusicService : MediaSessionService() {
 
     private fun preResolveNextItems() {
         serviceScope.launch(Dispatchers.IO) {
-            val currentIndex = withContext(Dispatchers.Main) { player.currentMediaItemIndex }
-            val count = withContext(Dispatchers.Main) { player.mediaItemCount }
+            val (currentIndex, count) = withContext(Dispatchers.Main) {
+                player.currentMediaItemIndex to player.mediaItemCount
+            }
             if (count == 0) return@launch
 
             // 🔋 Active Sliding Window Pre-Resolution: 2 tracks ahead, 1 track behind
             val windowIndices = listOf(currentIndex + 1, currentIndex + 2, currentIndex - 1)
             for (i in windowIndices) {
-                if (i in 0 until count) {
-                    val item = withContext(Dispatchers.Main) { player.getMediaItemAt(i) }
-                    val query = item.localConfiguration?.uri?.getQueryParameter("query")
-                    val artUrl = item.localConfiguration?.uri?.getQueryParameter("artwork_url")
+                val item = withContext(Dispatchers.Main) {
+                    runCatching {
+                        if (i in 0 until player.mediaItemCount) {
+                            player.getMediaItemAt(i)
+                        } else null
+                    }.getOrNull()
+                } ?: continue
 
-                    if (query != null && !resolvedCache.containsKey(query)) {
-                        val resolved = performResolution(query, artUrl ?: "", isPriority = false)
-                        if (resolved != null) {
-                            resolvedCache[query] = resolved
-                            withContext(Dispatchers.Main) {
-                                updateMetadataInQueue(i, item.mediaId, resolved.artwork)
-                            }
+                val query = item.localConfiguration?.uri?.getQueryParameter("query")
+                val artUrl = item.localConfiguration?.uri?.getQueryParameter("artwork_url")
+
+                if (query != null && !resolvedCache.containsKey(query)) {
+                    val resolved = performResolution(query, artUrl ?: "", isPriority = false)
+                    if (resolved != null) {
+                        resolvedCache[query] = resolved
+                        withContext(Dispatchers.Main) {
+                            updateMetadataInQueue(i, item.mediaId, resolved.artwork)
                         }
                     }
                 }
@@ -314,31 +320,34 @@ class MusicService : MediaSessionService() {
     }
 
     private fun updateMetadataInQueue(index: Int, mediaId: String, artworkBytes: ByteArray?) {
-        if (index < 0 || index >= player.mediaItemCount || artworkBytes == null) return
-        val item = player.getMediaItemAt(index)
-        
-        // 🛡️ Optimization: If item already has artwork, skip update to prevent transition loop
-        if (item.mediaMetadata.artworkData != null) return
-
-        if (item.mediaId == mediaId) {
-            val updatedMetadata = item.mediaMetadata.buildUpon()
-                .setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                .build()
-            val updatedItem = item.buildUpon().setMediaMetadata(updatedMetadata).build()
-            
-            if (index == player.currentMediaItemIndex) {
-                val pos = player.currentPosition
-                player.replaceMediaItem(index, updatedItem)
-                player.seekTo(index, pos)
-            } else {
-                player.replaceMediaItem(index, updatedItem)
+        if (artworkBytes == null) return
+        runCatching {
+            if (index in 0 until player.mediaItemCount) {
+                val item = player.getMediaItemAt(index)
+                if (item.mediaId == mediaId && item.mediaMetadata.artworkData == null) {
+                    val updatedMetadata = item.mediaMetadata.buildUpon()
+                        .setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                        .build()
+                    val updatedItem = item.buildUpon().setMediaMetadata(updatedMetadata).build()
+                    
+                    if (index == player.currentMediaItemIndex) {
+                        val pos = player.currentPosition
+                        player.replaceMediaItem(index, updatedItem)
+                        player.seekTo(index, pos)
+                    } else {
+                        player.replaceMediaItem(index, updatedItem)
+                    }
+                }
             }
         }
     }
 
     private fun updateActiveMetadata(mediaId: String, artworkBytes: ByteArray?) {
-        updateMetadataInQueue(player.currentMediaItemIndex, mediaId, artworkBytes)
-        mediaSession?.setCustomLayout(emptyList()) 
+        runCatching {
+            if (player.mediaItemCount > 0) {
+                updateMetadataInQueue(player.currentMediaItemIndex, mediaId, artworkBytes)
+            }
+        }
     }
 
     private inner class MediaSessionCallback : MediaSession.Callback {
