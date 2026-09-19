@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import android.content.res.Configuration
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
+
 import com.example.song.viewmodel.SongViewModel
 import java.util.Locale
 
@@ -95,6 +96,7 @@ fun PlayerScreen(
                                 tint = Color(0xFF424242)
                             )
                         }
+
                         IconButton(
                             onClick = { viewModel.toggleRepeatMode() },
                             modifier = Modifier

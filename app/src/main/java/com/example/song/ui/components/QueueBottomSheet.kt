@@ -11,6 +11,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntOffset
+import com.example.song.util.dragGestureHandler
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,6 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -56,6 +65,16 @@ fun QueueBottomSheet(
     val sleepTimerRemainingMs by viewModel.sleepTimerRemainingMs.collectAsState()
 
     var showTimerDialog by remember { mutableStateOf(false) }
+
+    val listState = rememberLazyListState()
+
+    var draggedQueueId by remember { mutableStateOf<String?>(null) }
+    var activeDraggedSong by remember { mutableStateOf<Song?>(null) }
+    var targetQueueIndex by remember { mutableStateOf<Int?>(null) }
+    var isDraggingManual by remember { mutableStateOf(true) }
+    var currentDragY by remember { mutableFloatStateOf(0f) }
+    var itemTouchOffset by remember { mutableFloatStateOf(0f) }
+    var measuredItemHeightPx by remember { mutableFloatStateOf(0f) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -147,9 +166,74 @@ fun QueueBottomSheet(
 
                 // Scrollable Content
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .dragGestureHandler(
+                            listState = listState,
+                            isReorderMode = true,
+                            onReorderStart = { key, fingerY, itemTop ->
+                                if (key is String) {
+                                    val manualIdx = manualQueue.indexOfFirst { it.queueId == key }
+                                    if (manualIdx != -1) {
+                                        draggedQueueId = key
+                                        activeDraggedSong = manualQueue[manualIdx].song
+                                        targetQueueIndex = manualIdx
+                                        isDraggingManual = true
+                                        currentDragY = fingerY
+                                        itemTouchOffset = fingerY - itemTop
+                                    } else {
+                                        val parentIdx = parentQueue.indexOfFirst { it.queueId == key }
+                                        if (parentIdx != -1) {
+                                            draggedQueueId = key
+                                            activeDraggedSong = parentQueue[parentIdx].song
+                                            targetQueueIndex = parentIdx
+                                            isDraggingManual = false
+                                            currentDragY = fingerY
+                                            itemTouchOffset = fingerY - itemTop
+                                        }
+                                    }
+                                }
+                            },
+                            onReorderUpdate = { y ->
+                                if (draggedQueueId != null) {
+                                    currentDragY = y
+                                    val info = listState.layoutInfo
+                                    val itemUnderFinger = info.visibleItemsInfo.find { 
+                                        y.toInt() in it.offset..(it.offset + it.size)
+                                    }
+                                    itemUnderFinger?.let { hitItem ->
+                                        val hitKey = hitItem.key
+                                        if (hitKey is String) {
+                                            val activeList = if (isDraggingManual) manualQueue else parentQueue
+                                            val newTarget = activeList.indexOfFirst { it.queueId == hitKey }
+                                            if (newTarget != -1 && newTarget != targetQueueIndex) {
+                                                targetQueueIndex = newTarget
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            onReorderEnd = {
+                                val currentDragged = draggedQueueId
+                                val targetIdx = targetQueueIndex
+                                if (currentDragged != null && targetIdx != null) {
+                                    val activeList = if (isDraggingManual) manualQueue else parentQueue
+                                    val fromIdx = activeList.indexOfFirst { it.queueId == currentDragged }
+                                    if (fromIdx != -1 && fromIdx != targetIdx) {
+                                        if (isDraggingManual) {
+                                            viewModel.reorderManualQueue(fromIdx, targetIdx)
+                                        } else {
+                                            viewModel.reorderParentQueue(fromIdx, targetIdx)
+                                        }
+                                    }
+                                }
+                                draggedQueueId = null
+                                activeDraggedSong = null
+                                targetQueueIndex = null
+                            }
+                        ),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // --- NOW PLAYING SECTION ---
@@ -211,24 +295,72 @@ fun QueueBottomSheet(
                             items = manualQueue,
                             key = { _, item -> item.queueId }
                         ) { index, item ->
-                            SmokedGlassQueueRow(
-                                song = item.song,
-                                onPlayNow = {
-                                    viewModel.playSong(item.song, currentQueue)
-                                },
-                                onRemove = {
-                                    viewModel.removeFromQueueByQueueId(item.queueId)
-                                },
-                                onMoveUp = if (index > 0) {
-                                    { viewModel.reorderManualQueue(index, index - 1) }
-                                } else null,
-                                onMoveDown = if (index < manualQueue.size - 1) {
-                                    { viewModel.reorderManualQueue(index, index + 1) }
-                                } else null,
-                                onMoveToTop = if (index > 0) {
-                                    { viewModel.reorderManualQueue(index, 0) }
-                                } else null
+                            val isDragging = draggedQueueId == item.queueId
+                            val itemHeightPx = measuredItemHeightPx
+                            val draggedIdx = manualQueue.indexOfFirst { it.queueId == draggedQueueId }
+
+                            val targetDisplacement = when {
+                                isDragging -> 0f
+                                draggedQueueId == null || targetQueueIndex == null || itemHeightPx == 0f || !isDraggingManual -> 0f
+                                draggedIdx != -1 && draggedIdx < targetQueueIndex!! && index > draggedIdx && index <= targetQueueIndex!! -> -itemHeightPx
+                                draggedIdx != -1 && draggedIdx > targetQueueIndex!! && index < draggedIdx && index >= targetQueueIndex!! -> itemHeightPx
+                                else -> 0f
+                            }
+
+                            val itemTranslationY by animateFloatAsState(
+                                targetValue = targetDisplacement,
+                                animationSpec = spring(stiffness = Spring.StiffnessLow),
+                                label = "DragTranslation"
                             )
+
+                            val isGhostSlot = !isDragging && isDraggingManual && targetQueueIndex == index && draggedQueueId != null
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .animateItem()
+                                    .zIndex(if (isGhostSlot) 1f else 0f)
+                                    .onGloballyPositioned {
+                                        if (measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat()
+                                    }
+                                    .graphicsLayer { translationY = itemTranslationY }
+                            ) {
+                                if (isGhostSlot) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(with(LocalDensity.current) { measuredItemHeightPx.toDp() })
+                                            .graphicsLayer { translationY = -itemTranslationY }
+                                            .padding(vertical = 4.dp)
+                                            .border(
+                                                width = 2.dp,
+                                                brush = Brush.linearGradient(
+                                                    colors = listOf(Color(0xFF4CAF50).copy(alpha = 0.6f), Color(0xFF4CAF50).copy(alpha = 0.2f))
+                                                ),
+                                                shape = RoundedCornerShape(16.dp)
+                                            )
+                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "DROP SONG HERE",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF4CAF50).copy(alpha = 0.8f),
+                                                letterSpacing = 2.sp
+                                            )
+                                        )
+                                    }
+                                }
+
+                                Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) {
+                                    SmokedGlassQueueRow(
+                                        song = item.song,
+                                        onPlayNow = { viewModel.playSong(item.song, currentQueue) },
+                                        onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) }
+                                    )
+                                }
+                            }
                         }
 
                         item {
@@ -275,24 +407,72 @@ fun QueueBottomSheet(
                             items = parentQueue,
                             key = { _, item -> item.queueId }
                         ) { index, item ->
-                            SmokedGlassQueueRow(
-                                song = item.song,
-                                onPlayNow = {
-                                    viewModel.playSong(item.song, currentQueue)
-                                },
-                                onRemove = {
-                                    viewModel.removeFromQueueByQueueId(item.queueId)
-                                },
-                                onMoveUp = if (index > 0) {
-                                    { viewModel.reorderParentQueue(index, index - 1) }
-                                } else null,
-                                onMoveDown = if (index < parentQueue.size - 1) {
-                                    { viewModel.reorderParentQueue(index, index + 1) }
-                                } else null,
-                                onMoveToTop = if (index > 0) {
-                                    { viewModel.reorderParentQueue(index, 0) }
-                                } else null
+                            val isDragging = draggedQueueId == item.queueId
+                            val itemHeightPx = measuredItemHeightPx
+                            val draggedIdx = parentQueue.indexOfFirst { it.queueId == draggedQueueId }
+
+                            val targetDisplacement = when {
+                                isDragging -> 0f
+                                draggedQueueId == null || targetQueueIndex == null || itemHeightPx == 0f || isDraggingManual -> 0f
+                                draggedIdx != -1 && draggedIdx < targetQueueIndex!! && index > draggedIdx && index <= targetQueueIndex!! -> -itemHeightPx
+                                draggedIdx != -1 && draggedIdx > targetQueueIndex!! && index < draggedIdx && index >= targetQueueIndex!! -> itemHeightPx
+                                else -> 0f
+                            }
+
+                            val itemTranslationY by animateFloatAsState(
+                                targetValue = targetDisplacement,
+                                animationSpec = spring(stiffness = Spring.StiffnessLow),
+                                label = "DragTranslation"
                             )
+
+                            val isGhostSlot = !isDragging && !isDraggingManual && targetQueueIndex == index && draggedQueueId != null
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .animateItem()
+                                    .zIndex(if (isGhostSlot) 1f else 0f)
+                                    .onGloballyPositioned {
+                                        if (measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat()
+                                    }
+                                    .graphicsLayer { translationY = itemTranslationY }
+                            ) {
+                                if (isGhostSlot) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(with(LocalDensity.current) { measuredItemHeightPx.toDp() })
+                                            .graphicsLayer { translationY = -itemTranslationY }
+                                            .padding(vertical = 4.dp)
+                                            .border(
+                                                width = 2.dp,
+                                                brush = Brush.linearGradient(
+                                                    colors = listOf(Color(0xFF4CAF50).copy(alpha = 0.6f), Color(0xFF4CAF50).copy(alpha = 0.2f))
+                                                ),
+                                                shape = RoundedCornerShape(16.dp)
+                                            )
+                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "DROP SONG HERE",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF4CAF50).copy(alpha = 0.8f),
+                                                letterSpacing = 2.sp
+                                            )
+                                        )
+                                    }
+                                }
+
+                                Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) {
+                                    SmokedGlassQueueRow(
+                                        song = item.song,
+                                        onPlayNow = { viewModel.playSong(item.song, currentQueue) },
+                                        onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) }
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -304,6 +484,37 @@ fun QueueBottomSheet(
 
                     item {
                         Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+
+                // Floating Active Dragged Item Snapshot Overlay
+                activeDraggedSong?.let { draggedSong ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset { IntOffset(0, (currentDragY - itemTouchOffset).roundToInt()) }
+                            .zIndex(100f)
+                    ) {
+                        val itemScale by animateFloatAsState(
+                            targetValue = 1.05f,
+                            label = "FloatingScale",
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                        )
+                        Box(
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = itemScale
+                                scaleY = itemScale
+                                shadowElevation = 24.dp.toPx()
+                                shape = RoundedCornerShape(16.dp)
+                                clip = true
+                            }
+                        ) {
+                            SmokedGlassQueueRow(
+                                song = draggedSong,
+                                onPlayNow = {},
+                                onRemove = {}
+                            )
+                        }
                     }
                 }
 
@@ -513,6 +724,10 @@ fun SmokedGlassQueueRow(
     onMoveDown: (() -> Unit)? = null,
     onMoveToTop: (() -> Unit)? = null
 ) {
+    var verticalDragOffset by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val rowHeightPx = with(density) { 60.dp.toPx() }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -527,11 +742,30 @@ fun SmokedGlassQueueRow(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Single Sleek Reorder / Drag Grip Handle
+            // Touch & Drag Reorder Grip Handle
             Box(
                 modifier = Modifier
-                    .padding(end = 10.dp)
+                    .padding(end = 8.dp)
                     .clip(RoundedCornerShape(8.dp))
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragStart = { verticalDragOffset = 0f },
+                            onDragEnd = {
+                                val steps = (verticalDragOffset / rowHeightPx).roundToInt()
+                                if (steps < 0 && onMoveUp != null) {
+                                    repeat(-steps) { onMoveUp.invoke() }
+                                } else if (steps > 0 && onMoveDown != null) {
+                                    repeat(steps) { onMoveDown.invoke() }
+                                }
+                                verticalDragOffset = 0f
+                            },
+                            onDragCancel = { verticalDragOffset = 0f },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                verticalDragOffset += dragAmount
+                            }
+                        )
+                    }
                     .clickable(enabled = onMoveToTop != null || onMoveUp != null) {
                         onMoveToTop?.invoke() ?: onMoveUp?.invoke()
                     }
@@ -542,7 +776,7 @@ fun SmokedGlassQueueRow(
                     imageVector = Icons.Default.DragHandle,
                     contentDescription = "Reorder Queue",
                     tint = if (onMoveToTop != null) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.50f),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
