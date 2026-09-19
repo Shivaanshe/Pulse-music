@@ -487,15 +487,19 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                             mediaItem?.let { item ->
                                 val songId = item.mediaId.toIntOrNull()
-                                _currentPlayingSong.value = _allSongs.value.find { it.id == songId } ?: Song(
+                                val song = _allSongs.value.find { it.id == songId } ?: Song(
                                     id = songId ?: 0,
                                     title = item.mediaMetadata.title?.toString() ?: "Unknown",
                                     artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
                                     audioUri = item.mediaMetadata.extras?.getString("youtube_url") ?: "",
                                     imageUrl = item.mediaMetadata.extras?.getString("custom_artwork_url")
                                 )
+                                _currentPlayingSong.value = song
                                 _duration.value = controller.duration.coerceAtLeast(0L)
-                                PulseLogger.log("Track transition: ${_currentPlayingSong.value?.title}")
+                                if (songId != null) {
+                                    pruneActiveSongFromQueue(songId)
+                                }
+                                PulseLogger.log("Track transition: ${song.title}")
                             }
                         }
 
@@ -800,6 +804,23 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getSongsInPlaylist(playlistId: Int): Flow<List<Song>> {
         return repository.getSongsInPlaylist(playlistId)
+    }
+
+    private fun pruneActiveSongFromQueue(activeSongId: Int) {
+        val manual = _manualQueue.value
+        val parent = _parentQueue.value
+
+        if (manual.isNotEmpty() && manual.first().song.id == activeSongId) {
+            _manualQueue.value = manual.drop(1)
+        } else if (manual.any { it.song.id == activeSongId }) {
+            _manualQueue.value = manual.filter { it.song.id != activeSongId }
+        } else if (parent.isNotEmpty() && parent.first().song.id == activeSongId) {
+            _parentQueue.value = parent.drop(1)
+        } else if (parent.any { it.song.id == activeSongId }) {
+            _parentQueue.value = parent.filter { it.song.id != activeSongId }
+        }
+
+        recomputeCombinedQueue()
     }
 
     private fun recomputeCombinedQueue() {

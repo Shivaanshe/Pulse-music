@@ -21,6 +21,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -320,19 +324,14 @@ fun QueueBottomSheet(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         // Shuffle Button
-                        val shuffleOffsetX = remember { Animatable(0f) }
-                        val shuffleAlpha = remember { Animatable(1f) }
+                        val shuffleScale by animateFloatAsState(
+                            targetValue = if (isShuffleEnabled) 1.15f else 1.0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            label = "ShuffleScale"
+                        )
 
                         IconButton(
                             onClick = {
-                                scope.launch {
-                                    launch { shuffleOffsetX.animateTo(50f, animationSpec = tween(160, easing = FastOutSlowInEasing)) }
-                                    launch { shuffleAlpha.animateTo(0f, animationSpec = tween(120)) }
-                                    delay(160)
-                                    shuffleOffsetX.snapTo(-50f)
-                                    launch { shuffleOffsetX.animateTo(0f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) }
-                                    launch { shuffleAlpha.animateTo(1f, animationSpec = tween(160)) }
-                                }
                                 viewModel.toggleShuffle()
                             },
                             modifier = Modifier
@@ -348,16 +347,12 @@ fun QueueBottomSheet(
                                 )
                                 .size(44.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Shuffle,
-                                contentDescription = "Toggle Shuffle",
-                                tint = if (isShuffleEnabled) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.60f),
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .graphicsLayer {
-                                        translationX = shuffleOffsetX.value
-                                        alpha = shuffleAlpha.value
-                                    }
+                            AnimatedShuffleIcon(
+                                isShuffleEnabled = isShuffleEnabled,
+                                modifier = Modifier.graphicsLayer {
+                                    scaleX = shuffleScale
+                                    scaleY = shuffleScale
+                                }
                             )
                         }
 
@@ -514,8 +509,8 @@ fun SmokedGlassQueueRow(
     song: Song,
     onPlayNow: () -> Unit,
     onRemove: () -> Unit,
-    onMoveUp: (() -> Unit)?,
-    onMoveDown: (() -> Unit)?,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
     onMoveToTop: (() -> Unit)? = null
 ) {
     Surface(
@@ -528,40 +523,27 @@ fun SmokedGlassQueueRow(
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Drag / Reorder Indicator
-            Column(verticalArrangement = Arrangement.Center) {
-                if (onMoveUp != null) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowUp,
-                        contentDescription = "Move Up",
-                        tint = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clickable { onMoveUp() }
-                    )
-                }
+            // Single Sleek Reorder / Drag Grip Handle
+            Box(
+                modifier = Modifier
+                    .padding(end = 10.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(enabled = onMoveToTop != null || onMoveUp != null) {
+                        onMoveToTop?.invoke() ?: onMoveUp?.invoke()
+                    }
+                    .padding(6.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
                     imageVector = Icons.Default.DragHandle,
-                    contentDescription = "Move to Top of Queue",
-                    tint = if (onMoveToTop != null) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clickable(enabled = onMoveToTop != null) { onMoveToTop?.invoke() }
+                    contentDescription = "Reorder Queue",
+                    tint = if (onMoveToTop != null) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.50f),
+                    modifier = Modifier.size(20.dp)
                 )
-                if (onMoveDown != null) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Move Down",
-                        tint = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clickable { onMoveDown() }
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -770,5 +752,75 @@ fun SleepTimerDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun AnimatedShuffleIcon(
+    isShuffleEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val progress by animateFloatAsState(
+        targetValue = if (isShuffleEnabled) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "ShuffleAnim"
+    )
+
+    val activeColor = Color(0xFF4CAF50)
+    val inactiveColor = Color.White.copy(alpha = 0.60f)
+    val color = if (isShuffleEnabled) activeColor else inactiveColor
+
+    Canvas(modifier = modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = 2.dp.toPx()
+
+        // Top line crossing to bottom line
+        val p1 = Path().apply {
+            moveTo(w * 0.15f, h * 0.30f)
+            cubicTo(
+                w * (0.35f + 0.10f * progress), h * (0.30f + 0.10f * progress),
+                w * (0.65f - 0.10f * progress), h * (0.70f - 0.10f * progress),
+                w * 0.85f, h * 0.70f
+            )
+        }
+
+        // Bottom line crossing to top line
+        val p2 = Path().apply {
+            moveTo(w * 0.15f, h * 0.70f)
+            cubicTo(
+                w * (0.35f + 0.10f * progress), h * (0.70f - 0.10f * progress),
+                w * (0.65f - 0.10f * progress), h * (0.30f + 0.10f * progress),
+                w * 0.85f, h * 0.30f
+            )
+        }
+
+        drawPath(p1, color = color, style = Stroke(width = stroke, cap = StrokeCap.Round))
+        drawPath(p2, color = color, style = Stroke(width = stroke, cap = StrokeCap.Round))
+
+        val arrowSize = 4.dp.toPx()
+        // Top right arrow head
+        drawPath(
+            path = Path().apply {
+                moveTo(w * 0.85f - arrowSize, h * 0.30f - arrowSize)
+                lineTo(w * 0.85f, h * 0.30f)
+                lineTo(w * 0.85f - arrowSize, h * 0.30f + arrowSize)
+            },
+            color = color,
+            style = Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+        // Bottom right arrow head
+        drawPath(
+            path = Path().apply {
+                moveTo(w * 0.85f - arrowSize, h * 0.70f - arrowSize)
+                lineTo(w * 0.85f, h * 0.70f)
+                lineTo(w * 0.85f - arrowSize, h * 0.70f + arrowSize)
+            },
+            color = color,
+            style = Stroke(width = stroke, cap = StrokeCap.Round)
+        )
     }
 }

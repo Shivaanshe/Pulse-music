@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.*
@@ -142,6 +143,9 @@ class MusicService : MediaSessionService() {
             .setAudioAttributes(audioAttributes, true) // true handles audio focus automatically
             .setHandleAudioBecomingNoisy(true) // handle Bluetooth/Headphone disconnect
             .build()
+
+        // 🛡️ Guarantee 1.0x normal playback speed to prevent sample rate/fast-forward bugs
+        player.playbackParameters = PlaybackParameters(1.0f, 1.0f)
         
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
