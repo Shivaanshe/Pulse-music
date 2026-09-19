@@ -152,26 +152,20 @@ class OtaUpdateViewModel(
         val asset = _activeAsset.value ?: return
 
         val existingFile = otaManager.getExistingDownloadedApk(release, asset)
-        if (existingFile != null) {
-            Log.d(TAG, "Found existing downloaded APK (${existingFile.name}). Bypassing download and launching install flow.")
+        if (existingFile != null && existingFile.exists() && existingFile.length() > 0) {
+            Log.d(TAG, "Found valid existing downloaded APK (${existingFile.name}). Bypassing download and launching install flow.")
             downloadedFile = existingFile
             triggerInstallFlow(existingFile)
         } else {
-            startDownload()
+            // File was missing or wiped by cleaner app. Start fresh download
+            downloadedFile = null
+            startDownloadForce()
         }
     }
 
-    fun startDownload() {
+    private fun startDownloadForce() {
         val release = _activeRelease.value ?: return
         val asset = _activeAsset.value ?: return
-
-        val existingFile = otaManager.getExistingDownloadedApk(release, asset)
-        if (existingFile != null) {
-            Log.d(TAG, "Found existing downloaded APK (${existingFile.name}). Bypassing download and launching install flow.")
-            downloadedFile = existingFile
-            triggerInstallFlow(existingFile)
-            return
-        }
 
         viewModelScope.launch {
             try {
@@ -184,6 +178,10 @@ class OtaUpdateViewModel(
                 _toastMessage.value = e.message ?: "Download failed"
             }
         }
+    }
+
+    fun startDownload() {
+        startDownloadOrInstall()
     }
 
     private fun startProgressPolling(downloadId: Long) {
@@ -221,11 +219,14 @@ class OtaUpdateViewModel(
             val files = downloadsDir?.listFiles()
             val apkFile = files?.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
 
-            if (apkFile != null && apkFile.exists()) {
+            if (apkFile != null && apkFile.exists() && apkFile.length() > 0) {
                 downloadedFile = apkFile
                 triggerInstallFlow(apkFile)
             } else {
-                _toastMessage.value = "Downloaded APK not found"
+                // Completed broadcast received, but file was wiped by cleaner app! Re-download automatically.
+                Log.w(TAG, "Download completion broadcast received, but file is missing from disk. Restarting download.")
+                downloadedFile = null
+                startDownloadForce()
             }
         }
     }

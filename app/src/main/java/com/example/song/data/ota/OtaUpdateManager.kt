@@ -330,6 +330,7 @@ class OtaUpdateManager(
 
     /**
      * Checks on cold start if a background download completed while the app process was terminated.
+     * Verifies that the completed file actually exists on disk; if wiped by a cleaner app, purges the stale task.
      */
     suspend fun checkPendingDownloadOnStart(): File? {
         val activeId = preferences.activeDownloadId.first()
@@ -344,14 +345,24 @@ class OtaUpdateManager(
                     if (file.exists() && file.length() > 0) {
                         Log.d(TAG, "Recovered completed background download (ID $activeId) at $apkPath")
                         return file
+                    } else {
+                        // File was wiped from disk by phone optimizer/cleaner app!
+                        Log.w(TAG, "Download ID $activeId was marked SUCCESSFUL, but file at $apkPath was wiped from disk. Purging stale task.")
+                        try { downloadManager.remove(activeId) } catch (e: Exception) {}
+                        preferences.setActiveDownloadId(-1L)
+                        preferences.setDownloadedApkPath(null)
                     }
                 }
-            } else if (progress.status == DownloadManager.STATUS_FAILED) {
-                Log.w(TAG, "Stale download ID $activeId failed in background. Cleaning up task.")
+            } else if (progress.status == DownloadManager.STATUS_FAILED || progress.status == DownloadManager.STATUS_PENDING) {
+                Log.w(TAG, "Stale download ID $activeId failed or stalled in background. Cleaning up task.")
                 try { downloadManager.remove(activeId) } catch (e: Exception) {}
                 preferences.setActiveDownloadId(-1L)
                 preferences.setDownloadedApkPath(null)
             }
+        } else {
+            // Task ID no longer present in DownloadManager database
+            preferences.setActiveDownloadId(-1L)
+            preferences.setDownloadedApkPath(null)
         }
         return null
     }
