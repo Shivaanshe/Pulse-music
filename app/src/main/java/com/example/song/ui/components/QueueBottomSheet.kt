@@ -487,37 +487,6 @@ fun QueueBottomSheet(
                     }
                 }
 
-                // Floating Active Dragged Item Snapshot Overlay
-                activeDraggedSong?.let { draggedSong ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .offset { IntOffset(0, (currentDragY - itemTouchOffset).roundToInt()) }
-                            .zIndex(100f)
-                    ) {
-                        val itemScale by animateFloatAsState(
-                            targetValue = 1.05f,
-                            label = "FloatingScale",
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-                        )
-                        Box(
-                            modifier = Modifier.graphicsLayer {
-                                scaleX = itemScale
-                                scaleY = itemScale
-                                shadowElevation = 24.dp.toPx()
-                                shape = RoundedCornerShape(16.dp)
-                                clip = true
-                            }
-                        ) {
-                            SmokedGlassQueueRow(
-                                song = draggedSong,
-                                onPlayNow = {},
-                                onRemove = {}
-                            )
-                        }
-                    }
-                }
-
                 // --- BOTTOM UTILITY BAR ---
                 Surface(
                     modifier = Modifier
@@ -614,6 +583,38 @@ fun QueueBottomSheet(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
+                    }
+                }
+            }
+
+            // Floating Active Dragged Item Snapshot Overlay (placed inside root Box at zIndex 100f)
+            activeDraggedSong?.let { draggedSong ->
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .fillMaxWidth()
+                        .offset { IntOffset(0, (currentDragY - itemTouchOffset).roundToInt()) }
+                        .zIndex(100f)
+                ) {
+                    val itemScale by animateFloatAsState(
+                        targetValue = 1.05f,
+                        label = "FloatingScale",
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                    )
+                    Box(
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = itemScale
+                            scaleY = itemScale
+                            shadowElevation = 24.dp.toPx()
+                            shape = RoundedCornerShape(16.dp)
+                            clip = true
+                        }
+                    ) {
+                        SmokedGlassQueueRow(
+                            song = draggedSong,
+                            onPlayNow = {},
+                            onRemove = {}
+                        )
                     }
                 }
             }
