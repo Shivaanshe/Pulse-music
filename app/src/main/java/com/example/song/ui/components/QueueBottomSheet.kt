@@ -2,6 +2,8 @@ package com.example.song.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,7 +41,10 @@ fun QueueBottomSheet(
     viewModel: SongViewModel,
     onDismissRequest: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     val currentQueue by viewModel.currentQueue.collectAsState()
+    val manualQueue by viewModel.manualQueue.collectAsState()
+    val parentQueue by viewModel.parentQueue.collectAsState()
     val currentSong by viewModel.currentPlayingSong.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
     val contextTitle by viewModel.queueContextTitle.collectAsState()
@@ -47,20 +52,6 @@ fun QueueBottomSheet(
     val sleepTimerRemainingMs by viewModel.sleepTimerRemainingMs.collectAsState()
 
     var showTimerDialog by remember { mutableStateOf(false) }
-
-    // Find index of current song in queue
-    val currentIndex = remember(currentQueue, currentSong) {
-        val idx = currentQueue.indexOfFirst { it.id == currentSong?.id }
-        if (idx >= 0) idx else 0
-    }
-
-    val upcomingSongs = remember(currentQueue, currentIndex) {
-        if (currentQueue.isEmpty() || currentIndex >= currentQueue.size) {
-            emptyList()
-        } else {
-            currentQueue.subList(currentIndex + 1, currentQueue.size)
-        }
-    }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -182,62 +173,128 @@ fun QueueBottomSheet(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    // --- UP NEXT SECTION ---
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Next in Queue (${upcomingSongs.size})",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    color = Color.White.copy(alpha = 0.88f),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
+                    // --- SECTION 2: ADDED TO QUEUE (MANUAL QUEUE) ---
+                    if (manualQueue.isNotEmpty()) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Added to Queue (${manualQueue.size})",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        color = Color.White.copy(alpha = 0.88f),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
                                 )
-                            )
 
-                            if (upcomingSongs.isNotEmpty()) {
                                 TextButton(
-                                    onClick = { viewModel.clearQueue() },
+                                    onClick = { viewModel.clearManualQueue() },
                                     contentPadding = PaddingValues(horizontal = 8.dp)
                                 ) {
                                     Text(
-                                        text = "Clear All",
+                                        text = "Clear",
                                         color = Color.White.copy(alpha = 0.60f),
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                             }
                         }
-                    }
 
-                    if (upcomingSongs.isEmpty()) {
-                        item {
-                            SmokedGlassEmptyCard(text = "Queue is empty. Add songs to get started!")
-                        }
-                    } else {
                         itemsIndexed(
-                            items = upcomingSongs,
-                            key = { index, song -> "${song.id}_$index" }
-                        ) { index, song ->
-                            val actualQueueIndex = currentIndex + 1 + index
+                            items = manualQueue,
+                            key = { _, item -> item.queueId }
+                        ) { index, item ->
                             SmokedGlassQueueRow(
-                                song = song,
+                                song = item.song,
                                 onPlayNow = {
-                                    viewModel.playSong(song, currentQueue)
+                                    viewModel.playSong(item.song, currentQueue)
                                 },
                                 onRemove = {
-                                    viewModel.removeFromQueue(actualQueueIndex)
+                                    viewModel.removeFromQueueByQueueId(item.queueId)
                                 },
                                 onMoveUp = if (index > 0) {
-                                    { viewModel.reorderQueue(actualQueueIndex, actualQueueIndex - 1) }
+                                    { viewModel.reorderManualQueue(index, index - 1) }
                                 } else null,
-                                onMoveDown = if (index < upcomingSongs.size - 1) {
-                                    { viewModel.reorderQueue(actualQueueIndex, actualQueueIndex + 1) }
+                                onMoveDown = if (index < manualQueue.size - 1) {
+                                    { viewModel.reorderManualQueue(index, index + 1) }
+                                } else null,
+                                onMoveToTop = if (index > 0) {
+                                    { viewModel.reorderManualQueue(index, 0) }
                                 } else null
                             )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
+
+                    // --- SECTION 3: CONTINUE PLAYING (PARENT PLAYLIST QUEUE) ---
+                    if (parentQueue.isNotEmpty()) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Continue Playing from $contextTitle (${parentQueue.size})",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        color = Color.White.copy(alpha = 0.88f),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                if (manualQueue.isEmpty()) {
+                                    TextButton(
+                                        onClick = { viewModel.clearQueue() },
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Clear All",
+                                            color = Color.White.copy(alpha = 0.60f),
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        itemsIndexed(
+                            items = parentQueue,
+                            key = { _, item -> item.queueId }
+                        ) { index, item ->
+                            SmokedGlassQueueRow(
+                                song = item.song,
+                                onPlayNow = {
+                                    viewModel.playSong(item.song, currentQueue)
+                                },
+                                onRemove = {
+                                    viewModel.removeFromQueueByQueueId(item.queueId)
+                                },
+                                onMoveUp = if (index > 0) {
+                                    { viewModel.reorderParentQueue(index, index - 1) }
+                                } else null,
+                                onMoveDown = if (index < parentQueue.size - 1) {
+                                    { viewModel.reorderParentQueue(index, index + 1) }
+                                } else null,
+                                onMoveToTop = if (index > 0) {
+                                    { viewModel.reorderParentQueue(index, 0) }
+                                } else null
+                            )
+                        }
+                    }
+
+                    if (manualQueue.isEmpty() && parentQueue.isEmpty()) {
+                        item {
+                            SmokedGlassEmptyCard(text = "Queue is empty. Add songs to get started!")
                         }
                     }
 
@@ -263,19 +320,21 @@ fun QueueBottomSheet(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         // Shuffle Button
-                        val shuffleRotation by animateFloatAsState(
-                            targetValue = if (isShuffleEnabled) 180f else 0f,
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                            label = "ShuffleRotation"
-                        )
-                        val shuffleScale by animateFloatAsState(
-                            targetValue = if (isShuffleEnabled) 1.1f else 1.0f,
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                            label = "ShuffleScale"
-                        )
+                        val shuffleOffsetX = remember { Animatable(0f) }
+                        val shuffleAlpha = remember { Animatable(1f) }
 
                         IconButton(
-                            onClick = { viewModel.toggleShuffle() },
+                            onClick = {
+                                scope.launch {
+                                    launch { shuffleOffsetX.animateTo(50f, animationSpec = tween(160, easing = FastOutSlowInEasing)) }
+                                    launch { shuffleAlpha.animateTo(0f, animationSpec = tween(120)) }
+                                    delay(160)
+                                    shuffleOffsetX.snapTo(-50f)
+                                    launch { shuffleOffsetX.animateTo(0f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) }
+                                    launch { shuffleAlpha.animateTo(1f, animationSpec = tween(160)) }
+                                }
+                                viewModel.toggleShuffle()
+                            },
                             modifier = Modifier
                                 .background(
                                     if (isShuffleEnabled) Color(0xFF4CAF50).copy(alpha = 0.25f)
@@ -296,9 +355,8 @@ fun QueueBottomSheet(
                                 modifier = Modifier
                                     .size(22.dp)
                                     .graphicsLayer {
-                                        rotationZ = shuffleRotation
-                                        scaleX = shuffleScale
-                                        scaleY = shuffleScale
+                                        translationX = shuffleOffsetX.value
+                                        alpha = shuffleAlpha.value
                                     }
                             )
                         }
@@ -457,7 +515,8 @@ fun SmokedGlassQueueRow(
     onPlayNow: () -> Unit,
     onRemove: () -> Unit,
     onMoveUp: (() -> Unit)?,
-    onMoveDown: (() -> Unit)?
+    onMoveDown: (() -> Unit)?,
+    onMoveToTop: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier
@@ -487,9 +546,11 @@ fun SmokedGlassQueueRow(
                 }
                 Icon(
                     imageVector = Icons.Default.DragHandle,
-                    contentDescription = "Drag Handle",
-                    tint = Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier.size(18.dp)
+                    contentDescription = "Move to Top of Queue",
+                    tint = if (onMoveToTop != null) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable(enabled = onMoveToTop != null) { onMoveToTop?.invoke() }
                 )
                 if (onMoveDown != null) {
                     Icon(

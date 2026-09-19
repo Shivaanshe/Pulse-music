@@ -21,8 +21,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 
 @Composable
@@ -41,17 +40,8 @@ fun QueueSnackbar(
 
     AnimatedVisibility(
         visible = message != null,
-        enter = slideInVertically(
-            initialOffsetY = { fullHeight -> fullHeight * 2 },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            )
-        ) + fadeIn(animationSpec = tween(300)),
-        exit = slideOutVertically(
-            targetOffsetY = { fullHeight -> fullHeight * 2 },
-            animationSpec = tween(250, easing = FastOutSlowInEasing)
-        ) + fadeOut(animationSpec = tween(200)),
+        enter = fadeIn(animationSpec = tween(durationMillis = 250)),
+        exit = fadeOut(animationSpec = tween(durationMillis = 200)),
         modifier = modifier
     ) {
         if (message != null) {

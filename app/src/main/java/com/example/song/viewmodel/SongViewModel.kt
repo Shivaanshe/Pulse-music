@@ -23,6 +23,7 @@ import androidx.media3.session.SessionToken
 import com.example.song.SongApplication
 import com.example.song.data.database.AppDatabase
 import com.example.song.data.model.Playlist
+import com.example.song.data.model.QueueItem
 import com.example.song.data.model.Song
 import com.example.song.data.model.StreamingItem
 import com.example.song.data.repository.SongRepository
@@ -99,6 +100,12 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _currentQueue = MutableStateFlow<List<Song>>(emptyList())
     val currentQueue: StateFlow<List<Song>> = _currentQueue.asStateFlow()
+
+    private val _manualQueue = MutableStateFlow<List<QueueItem>>(emptyList())
+    val manualQueue: StateFlow<List<QueueItem>> = _manualQueue.asStateFlow()
+
+    private val _parentQueue = MutableStateFlow<List<QueueItem>>(emptyList())
+    val parentQueue: StateFlow<List<QueueItem>> = _parentQueue.asStateFlow()
 
     private val _unshuffledQueue = MutableStateFlow<List<Song>>(emptyList())
     val unshuffledQueue: StateFlow<List<Song>> = _unshuffledQueue.asStateFlow()
@@ -795,30 +802,51 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         return repository.getSongsInPlaylist(playlistId)
     }
 
+    private fun recomputeCombinedQueue() {
+        val activeSong = _currentPlayingSong.value
+        val activeItem = activeSong?.let { QueueItem(queueId = "active_playing", song = it) }
+
+        val manualItems = _manualQueue.value
+        val parentItems = _parentQueue.value
+
+        val combinedItems = listOfNotNull(activeItem) + manualItems + parentItems
+        val combinedSongs = combinedItems.map { it.song }
+
+        if (_isShuffleEnabled.value && combinedSongs.size > 1) {
+            val head = combinedSongs.subList(0, 1)
+            val tail = combinedSongs.subList(1, combinedSongs.size).shuffled()
+            _currentQueue.value = head + tail
+        } else {
+            _currentQueue.value = combinedSongs
+        }
+        updateServiceQueue()
+    }
+
     fun playSong(song: Song, queue: List<Song> = _allSongs.value, contextTitle: String? = null) {
         if (queue.isEmpty()) return
         
         contextTitle?.let { _queueContextTitle.value = it } ?: run { _queueContextTitle.value = "Playing \"${song.title}\"" }
-        
-        val targetQueue = if (_isShuffleEnabled.value) {
-            val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-            val head = queue.subList(0, index + 1)
-            val tail = queue.subList(index + 1, queue.size).shuffled()
-            head + tail
-        } else queue
 
-        _currentQueue.value = targetQueue
-        _unshuffledQueue.value = queue
+        _manualQueue.value = emptyList()
+
+        val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+        val remainingSongs = if (index + 1 < queue.size) queue.subList(index + 1, queue.size) else emptyList()
+        _parentQueue.value = remainingSongs.map { QueueItem(song = it, isUserQueued = false) }
+
+        _currentPlayingSong.value = song
         PulseLogger.log("Playing local song: ${song.title}")
-        
-        val index = targetQueue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+
+        recomputeCombinedQueue()
+
+        val targetQueue = _currentQueue.value
         val ids = targetQueue.mapTo(ArrayList()) { it.id }
-        
+
         mediaController?.let { controller ->
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
-                putInt("index", index)
+                putInt("index", 0)
                 putBoolean("isStreaming", false)
+                putParcelableArrayList("songs", ArrayList(targetQueue))
             }
             controller.sendCustomCommand(SessionCommand("PLAY_QUEUE", Bundle.EMPTY), args)
         }
@@ -861,30 +889,31 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 duration = it.duration
             )
         }
-        
+
         contextTitle?.let { _queueContextTitle.value = it } ?: run { _queueContextTitle.value = "Playing \"${item.title}\"" }
 
         val targetSong = mappedQueue.find { it.id == (1_000_000 + item.id) } ?: mappedQueue.firstOrNull() ?: return
-        
-        val targetQueue = if (_isShuffleEnabled.value) {
-            val idx = mappedQueue.indexOfFirst { it.id == targetSong.id }.coerceAtLeast(0)
-            val head = mappedQueue.subList(0, idx + 1)
-            val tail = mappedQueue.subList(idx + 1, mappedQueue.size).shuffled()
-            head + tail
-        } else mappedQueue
 
-        _currentQueue.value = targetQueue
-        _unshuffledQueue.value = mappedQueue
+        _manualQueue.value = emptyList()
 
-        val index = targetQueue.indexOfFirst { it.id == targetSong.id }.coerceAtLeast(0)
-        val ids = targetQueue.mapTo(ArrayList()) { it.id }
+        val index = mappedQueue.indexOfFirst { it.id == targetSong.id }.coerceAtLeast(0)
+        val remainingSongs = if (index + 1 < mappedQueue.size) mappedQueue.subList(index + 1, mappedQueue.size) else emptyList()
+        _parentQueue.value = remainingSongs.map { QueueItem(song = it, isUserQueued = false) }
+
+        _currentPlayingSong.value = targetSong
         PulseLogger.log("Playing streaming item: ${item.title}")
+
+        recomputeCombinedQueue()
+
+        val targetQueue = _currentQueue.value
+        val ids = targetQueue.mapTo(ArrayList()) { it.id }
 
         mediaController?.let { controller ->
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
-                putInt("index", index)
+                putInt("index", 0)
                 putBoolean("isStreaming", true)
+                putParcelableArrayList("songs", ArrayList(targetQueue))
             }
             controller.sendCustomCommand(SessionCommand("PLAY_QUEUE", Bundle.EMPTY), args)
         }
@@ -919,43 +948,25 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
 
         contextTitle?.let { _queueContextTitle.value = it }
 
-        val currentList = _currentQueue.value.toMutableList()
-        val unshuffledList = _unshuffledQueue.value.toMutableList()
+        val newItems = songs.map { QueueItem(song = it, isUserQueued = true) }
 
-        if (currentList.isEmpty()) {
-            _currentQueue.value = songs
-            _unshuffledQueue.value = songs
+        if (_currentQueue.value.isEmpty()) {
+            _manualQueue.value = newItems
             if (_currentPlayingSong.value == null) {
-                playSong(songs.first(), songs)
-            } else {
-                updateServiceQueue()
+                playSong(songs.first(), songs, contextTitle)
+                return
             }
         } else {
-            val currentPlayingId = _currentPlayingSong.value?.id
-            val currentIndex = currentList.indexOfFirst { it.id == currentPlayingId }.coerceAtLeast(0)
-
+            val currentManual = _manualQueue.value.toMutableList()
             if (playNext) {
-                val insertIndex = (currentIndex + 1).coerceAtMost(currentList.size)
-                currentList.addAll(insertIndex, songs)
-                
-                val unshuffledIndex = unshuffledList.indexOfFirst { it.id == currentPlayingId }
-                val unshuffledInsertIndex = if (unshuffledIndex >= 0) (unshuffledIndex + 1).coerceAtMost(unshuffledList.size) else unshuffledList.size
-                unshuffledList.addAll(unshuffledInsertIndex, songs)
+                currentManual.addAll(0, newItems)
             } else {
-                currentList.addAll(songs)
-                unshuffledList.addAll(songs)
+                currentManual.addAll(newItems)
             }
-
-            if (_isShuffleEnabled.value) {
-                val head = currentList.subList(0, currentIndex + 1)
-                val tail = currentList.subList(currentIndex + 1, currentList.size).shuffled()
-                _currentQueue.value = head + tail
-            } else {
-                _currentQueue.value = currentList
-            }
-            _unshuffledQueue.value = unshuffledList
-            updateServiceQueue()
+            _manualQueue.value = currentManual
         }
+
+        recomputeCombinedQueue()
 
         val text = if (songs.size == 1) {
             "Added \"${songs.first().title}\" to Queue"
@@ -988,17 +999,39 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun removeFromQueueByQueueId(queueId: String) {
+        _manualQueue.value = _manualQueue.value.filter { it.queueId != queueId }
+        _parentQueue.value = _parentQueue.value.filter { it.queueId != queueId }
+        recomputeCombinedQueue()
+    }
+
     fun removeFromQueue(index: Int) {
         val currentList = _currentQueue.value.toMutableList()
         if (index in currentList.indices) {
             val removedSong = currentList.removeAt(index)
-            _currentQueue.value = currentList
-            
-            val unshuffledList = _unshuffledQueue.value.toMutableList()
-            unshuffledList.remove(removedSong)
-            _unshuffledQueue.value = unshuffledList
+            _manualQueue.value = _manualQueue.value.filter { it.song.id != removedSong.id }
+            _parentQueue.value = _parentQueue.value.filter { it.song.id != removedSong.id }
+            recomputeCombinedQueue()
+        }
+    }
 
-            updateServiceQueue()
+    fun reorderManualQueue(fromIndex: Int, toIndex: Int) {
+        val list = _manualQueue.value.toMutableList()
+        if (fromIndex in list.indices && toIndex in list.indices) {
+            val item = list.removeAt(fromIndex)
+            list.add(toIndex, item)
+            _manualQueue.value = list
+            recomputeCombinedQueue()
+        }
+    }
+
+    fun reorderParentQueue(fromIndex: Int, toIndex: Int) {
+        val list = _parentQueue.value.toMutableList()
+        if (fromIndex in list.indices && toIndex in list.indices) {
+            val item = list.removeAt(fromIndex)
+            list.add(toIndex, item)
+            _parentQueue.value = list
+            recomputeCombinedQueue()
         }
     }
 
@@ -1012,43 +1045,21 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun clearManualQueue() {
+        _manualQueue.value = emptyList()
+        recomputeCombinedQueue()
+    }
+
     fun clearQueue() {
-        val currentPlaying = _currentPlayingSong.value
-        if (currentPlaying != null) {
-            _currentQueue.value = listOf(currentPlaying)
-            _unshuffledQueue.value = listOf(currentPlaying)
-        } else {
-            _currentQueue.value = emptyList()
-            _unshuffledQueue.value = emptyList()
-        }
-        updateServiceQueue()
+        _manualQueue.value = emptyList()
+        _parentQueue.value = emptyList()
+        recomputeCombinedQueue()
     }
 
     fun toggleShuffle() {
         val newShuffleState = !_isShuffleEnabled.value
         _isShuffleEnabled.value = newShuffleState
-
-        val currentPlaying = _currentPlayingSong.value
-        val currentList = _currentQueue.value
-
-        if (newShuffleState) {
-            if (_unshuffledQueue.value.isEmpty()) {
-                _unshuffledQueue.value = currentList
-            }
-            if (currentPlaying != null && currentList.isNotEmpty()) {
-                val currentIndex = currentList.indexOfFirst { it.id == currentPlaying.id }.coerceAtLeast(0)
-                val head = currentList.subList(0, currentIndex + 1)
-                val tail = currentList.subList(currentIndex + 1, currentList.size).shuffled()
-                _currentQueue.value = head + tail
-            } else {
-                _currentQueue.value = currentList.shuffled()
-            }
-        } else {
-            if (_unshuffledQueue.value.isNotEmpty()) {
-                _currentQueue.value = _unshuffledQueue.value
-            }
-        }
-        updateServiceQueue()
+        recomputeCombinedQueue()
     }
 
     fun setSleepTimer(minutes: Int) {
@@ -1090,6 +1101,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
                 putInt("index", index)
+                putParcelableArrayList("songs", ArrayList(queue))
             }
             controller.sendCustomCommand(SessionCommand("UPDATE_QUEUE", Bundle.EMPTY), args)
         }

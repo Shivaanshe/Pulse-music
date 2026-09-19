@@ -285,20 +285,23 @@ class MusicService : MediaSessionService() {
         serviceScope.launch(Dispatchers.IO) {
             val currentIndex = withContext(Dispatchers.Main) { player.currentMediaItemIndex }
             val count = withContext(Dispatchers.Main) { player.mediaItemCount }
-            
-            // 🔋 Optimization: Only pre-resolve the immediate NEXT track to save CPU/Battery
-            val i = currentIndex + 1
-            if (i in 0 until count) {
-                val item = withContext(Dispatchers.Main) { player.getMediaItemAt(i) }
-                val query = item.localConfiguration?.uri?.getQueryParameter("query")
-                val artUrl = item.localConfiguration?.uri?.getQueryParameter("artwork_url")
-                
-                if (query != null && !resolvedCache.containsKey(query)) {
-                    val resolved = performResolution(query, artUrl ?: "", isPriority = false)
-                    if (resolved != null) {
-                        resolvedCache[query] = resolved
-                        withContext(Dispatchers.Main) {
-                            updateMetadataInQueue(i, item.mediaId, resolved.artwork)
+            if (count == 0) return@launch
+
+            // 🔋 Active Sliding Window Pre-Resolution: 2 tracks ahead, 1 track behind
+            val windowIndices = listOf(currentIndex + 1, currentIndex + 2, currentIndex - 1)
+            for (i in windowIndices) {
+                if (i in 0 until count) {
+                    val item = withContext(Dispatchers.Main) { player.getMediaItemAt(i) }
+                    val query = item.localConfiguration?.uri?.getQueryParameter("query")
+                    val artUrl = item.localConfiguration?.uri?.getQueryParameter("artwork_url")
+
+                    if (query != null && !resolvedCache.containsKey(query)) {
+                        val resolved = performResolution(query, artUrl ?: "", isPriority = false)
+                        if (resolved != null) {
+                            resolvedCache[query] = resolved
+                            withContext(Dispatchers.Main) {
+                                updateMetadataInQueue(i, item.mediaId, resolved.artwork)
+                            }
                         }
                     }
                 }
@@ -415,20 +418,28 @@ class MusicService : MediaSessionService() {
                 serviceScope.launch {
                     val repository = SongApplication.getInstance().repository
                     
-                    val streamingIds = ids.filter { it >= 1_000_000 }.map { it - 1_000_000 }
-                    val localIds = ids.filter { it < 1_000_000 }
-                    
-                    val streamingItems = if (streamingIds.isNotEmpty()) repository.getStreamingItemsByIdsSync(streamingIds) else emptyList()
-                    val localSongs = if (localIds.isNotEmpty()) repository.getSongsByIdsSync(localIds) else emptyList()
-                    
-                    val allItemsMap = mutableMapOf<Int, Song>()
-                    localSongs.forEach { allItemsMap[it.id] = it }
-                    streamingItems.forEach { item ->
-                        val song = item.toSong().copy(id = 1_000_000 + item.id)
-                        allItemsMap[1_000_000 + item.id] = song
+                    val parcelableSongs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        args.getParcelableArrayList("songs", Song::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        args.getParcelableArrayList("songs")
                     }
-                    
-                    val songs = ids.mapNotNull { allItemsMap[it] }
+
+                    val songs = if (!parcelableSongs.isNullOrEmpty()) {
+                        parcelableSongs
+                    } else {
+                        val streamingIds = ids.filter { it >= 1_000_000 }.map { it - 1_000_000 }
+                        val localIds = ids.filter { it < 1_000_000 }
+                        val streamingItems = if (streamingIds.isNotEmpty()) repository.getStreamingItemsByIdsSync(streamingIds) else emptyList()
+                        val localSongs = if (localIds.isNotEmpty()) repository.getSongsByIdsSync(localIds) else emptyList()
+                        val allItemsMap = mutableMapOf<Int, Song>()
+                        localSongs.forEach { allItemsMap[it.id] = it }
+                        streamingItems.forEach { item ->
+                            val song = item.toSong().copy(id = 1_000_000 + item.id)
+                            allItemsMap[1_000_000 + item.id] = song
+                        }
+                        ids.mapNotNull { allItemsMap[it] }
+                    }
                     
                     if (songs.isNotEmpty()) {
                         PulseLogger.log("Queue mapping: ${songs.size} items JIT-Ready")
@@ -457,20 +468,28 @@ class MusicService : MediaSessionService() {
                 serviceScope.launch {
                     val repository = SongApplication.getInstance().repository
 
-                    val streamingIds = ids.filter { it >= 1_000_000 }.map { it - 1_000_000 }
-                    val localIds = ids.filter { it < 1_000_000 }
-
-                    val streamingItems = if (streamingIds.isNotEmpty()) repository.getStreamingItemsByIdsSync(streamingIds) else emptyList()
-                    val localSongs = if (localIds.isNotEmpty()) repository.getSongsByIdsSync(localIds) else emptyList()
-
-                    val allItemsMap = mutableMapOf<Int, Song>()
-                    localSongs.forEach { allItemsMap[it.id] = it }
-                    streamingItems.forEach { item ->
-                        val song = item.toSong().copy(id = 1_000_000 + item.id)
-                        allItemsMap[1_000_000 + item.id] = song
+                    val parcelableSongs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        args.getParcelableArrayList("songs", Song::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        args.getParcelableArrayList("songs")
                     }
 
-                    val songs = ids.mapNotNull { allItemsMap[it] }
+                    val songs = if (!parcelableSongs.isNullOrEmpty()) {
+                        parcelableSongs
+                    } else {
+                        val streamingIds = ids.filter { it >= 1_000_000 }.map { it - 1_000_000 }
+                        val localIds = ids.filter { it < 1_000_000 }
+                        val streamingItems = if (streamingIds.isNotEmpty()) repository.getStreamingItemsByIdsSync(streamingIds) else emptyList()
+                        val localSongs = if (localIds.isNotEmpty()) repository.getSongsByIdsSync(localIds) else emptyList()
+                        val allItemsMap = mutableMapOf<Int, Song>()
+                        localSongs.forEach { allItemsMap[it.id] = it }
+                        streamingItems.forEach { item ->
+                            val song = item.toSong().copy(id = 1_000_000 + item.id)
+                            allItemsMap[1_000_000 + item.id] = song
+                        }
+                        ids.mapNotNull { allItemsMap[it] }
+                    }
 
                     if (songs.isNotEmpty()) {
                         val mediaItems = songs.map { mapSongToMediaItem(it) }
@@ -503,6 +522,7 @@ class MusicService : MediaSessionService() {
                                 player.setMediaItems(mediaItems, safeIndex, position)
                                 if (isPlaying) player.play()
                             }
+                            preResolveNextItems()
                         }
                     }
                 }
