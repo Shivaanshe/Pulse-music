@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
 import com.example.song.util.dragGestureHandler
 import androidx.compose.foundation.shape.CircleShape
@@ -74,6 +75,8 @@ fun QueueBottomSheet(
     var isDraggingManual by remember { mutableStateOf(true) }
     var accumulatedDragY by remember { mutableFloatStateOf(0f) }
     var measuredItemHeightPx by remember { mutableFloatStateOf(0f) }
+    var sheetRootTopInRootPx by remember { mutableFloatStateOf(0f) }
+    var draggedItemInitialTopInSheetPx by remember { mutableFloatStateOf(0f) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -89,6 +92,9 @@ fun QueueBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.85f)
+                .onGloballyPositioned { coordinates ->
+                    sheetRootTopInRootPx = coordinates.positionInRoot().y
+                }
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
@@ -293,12 +299,13 @@ fun QueueBottomSheet(
                                         song = item.song,
                                         onPlayNow = { viewModel.playSong(item.song, currentQueue) },
                                         onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) },
-                                        onDragStart = { localY ->
+                                        onDragStart = { itemTopInRootPx ->
                                             draggedQueueId = item.queueId
                                             activeDraggedSong = item.song
                                             targetQueueIndex = index
                                             isDraggingManual = true
                                             accumulatedDragY = 0f
+                                            draggedItemInitialTopInSheetPx = itemTopInRootPx - sheetRootTopInRootPx
                                         },
                                         onDragUpdate = { dragAmount ->
                                             if (draggedQueueId == item.queueId) {
@@ -436,12 +443,13 @@ fun QueueBottomSheet(
                                         song = item.song,
                                         onPlayNow = { viewModel.playSong(item.song, currentQueue) },
                                         onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) },
-                                        onDragStart = { localY ->
+                                        onDragStart = { itemTopInRootPx ->
                                             draggedQueueId = item.queueId
                                             activeDraggedSong = item.song
                                             targetQueueIndex = index
                                             isDraggingManual = false
                                             accumulatedDragY = 0f
+                                            draggedItemInitialTopInSheetPx = itemTopInRootPx - sheetRootTopInRootPx
                                         },
                                         onDragUpdate = { dragAmount ->
                                             if (draggedQueueId == item.queueId) {
@@ -590,7 +598,7 @@ fun QueueBottomSheet(
                     modifier = Modifier
                         .padding(horizontal = 20.dp)
                         .fillMaxWidth()
-                        .offset { IntOffset(0, accumulatedDragY.roundToInt()) }
+                        .offset { IntOffset(0, (draggedItemInitialTopInSheetPx + accumulatedDragY).roundToInt()) }
                         .zIndex(100f)
                 ) {
                     val itemScale by animateFloatAsState(
@@ -722,9 +730,14 @@ fun SmokedGlassQueueRow(
     onDragUpdate: (Float) -> Unit = {},
     onDragEnd: () -> Unit = {}
 ) {
+    var itemTopInRootPx by remember { mutableFloatStateOf(0f) }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                itemTopInRootPx = coordinates.positionInRoot().y
+            }
             .clickable { onPlayNow() },
         shape = RoundedCornerShape(16.dp),
         color = Color(0xFF000000).copy(alpha = 0.40f),
@@ -744,7 +757,7 @@ fun SmokedGlassQueueRow(
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragStart = { offset ->
-                                onDragStart(offset.y)
+                                onDragStart(itemTopInRootPx)
                             },
                             onDragEnd = {
                                 onDragEnd()
