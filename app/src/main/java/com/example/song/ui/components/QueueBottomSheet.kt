@@ -72,8 +72,7 @@ fun QueueBottomSheet(
     var activeDraggedSong by remember { mutableStateOf<Song?>(null) }
     var targetQueueIndex by remember { mutableStateOf<Int?>(null) }
     var isDraggingManual by remember { mutableStateOf(true) }
-    var currentDragY by remember { mutableFloatStateOf(0f) }
-    var itemTouchOffset by remember { mutableFloatStateOf(0f) }
+    var accumulatedDragY by remember { mutableFloatStateOf(0f) }
     var measuredItemHeightPx by remember { mutableFloatStateOf(0f) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -169,71 +168,7 @@ fun QueueBottomSheet(
                     state = listState,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .dragGestureHandler(
-                            listState = listState,
-                            isReorderMode = true,
-                            onReorderStart = { key, fingerY, itemTop ->
-                                if (key is String) {
-                                    val manualIdx = manualQueue.indexOfFirst { it.queueId == key }
-                                    if (manualIdx != -1) {
-                                        draggedQueueId = key
-                                        activeDraggedSong = manualQueue[manualIdx].song
-                                        targetQueueIndex = manualIdx
-                                        isDraggingManual = true
-                                        currentDragY = fingerY
-                                        itemTouchOffset = fingerY - itemTop
-                                    } else {
-                                        val parentIdx = parentQueue.indexOfFirst { it.queueId == key }
-                                        if (parentIdx != -1) {
-                                            draggedQueueId = key
-                                            activeDraggedSong = parentQueue[parentIdx].song
-                                            targetQueueIndex = parentIdx
-                                            isDraggingManual = false
-                                            currentDragY = fingerY
-                                            itemTouchOffset = fingerY - itemTop
-                                        }
-                                    }
-                                }
-                            },
-                            onReorderUpdate = { y ->
-                                if (draggedQueueId != null) {
-                                    currentDragY = y
-                                    val info = listState.layoutInfo
-                                    val itemUnderFinger = info.visibleItemsInfo.find { 
-                                        y.toInt() in it.offset..(it.offset + it.size)
-                                    }
-                                    itemUnderFinger?.let { hitItem ->
-                                        val hitKey = hitItem.key
-                                        if (hitKey is String) {
-                                            val activeList = if (isDraggingManual) manualQueue else parentQueue
-                                            val newTarget = activeList.indexOfFirst { it.queueId == hitKey }
-                                            if (newTarget != -1 && newTarget != targetQueueIndex) {
-                                                targetQueueIndex = newTarget
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            onReorderEnd = {
-                                val currentDragged = draggedQueueId
-                                val targetIdx = targetQueueIndex
-                                if (currentDragged != null && targetIdx != null) {
-                                    val activeList = if (isDraggingManual) manualQueue else parentQueue
-                                    val fromIdx = activeList.indexOfFirst { it.queueId == currentDragged }
-                                    if (fromIdx != -1 && fromIdx != targetIdx) {
-                                        if (isDraggingManual) {
-                                            viewModel.reorderManualQueue(fromIdx, targetIdx)
-                                        } else {
-                                            viewModel.reorderParentQueue(fromIdx, targetIdx)
-                                        }
-                                    }
-                                }
-                                draggedQueueId = null
-                                activeDraggedSong = null
-                                targetQueueIndex = null
-                            }
-                        ),
+                        .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // --- NOW PLAYING SECTION ---
@@ -357,7 +292,38 @@ fun QueueBottomSheet(
                                     SmokedGlassQueueRow(
                                         song = item.song,
                                         onPlayNow = { viewModel.playSong(item.song, currentQueue) },
-                                        onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) }
+                                        onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) },
+                                        onDragStart = { localY ->
+                                            draggedQueueId = item.queueId
+                                            activeDraggedSong = item.song
+                                            targetQueueIndex = index
+                                            isDraggingManual = true
+                                            accumulatedDragY = 0f
+                                        },
+                                        onDragUpdate = { dragAmount ->
+                                            if (draggedQueueId == item.queueId) {
+                                                accumulatedDragY += dragAmount
+                                                val steps = (accumulatedDragY / itemHeightPx.coerceAtLeast(1f)).roundToInt()
+                                                val newTarget = (index + steps).coerceIn(0, manualQueue.size - 1)
+                                                if (newTarget != targetQueueIndex) {
+                                                    targetQueueIndex = newTarget
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val currentDragged = draggedQueueId
+                                            val targetIdx = targetQueueIndex
+                                            if (currentDragged != null && targetIdx != null) {
+                                                val fromIdx = manualQueue.indexOfFirst { it.queueId == currentDragged }
+                                                if (fromIdx != -1 && fromIdx != targetIdx) {
+                                                    viewModel.reorderManualQueue(fromIdx, targetIdx)
+                                                }
+                                            }
+                                            draggedQueueId = null
+                                            activeDraggedSong = null
+                                            targetQueueIndex = null
+                                            accumulatedDragY = 0f
+                                        }
                                     )
                                 }
                             }
@@ -469,7 +435,38 @@ fun QueueBottomSheet(
                                     SmokedGlassQueueRow(
                                         song = item.song,
                                         onPlayNow = { viewModel.playSong(item.song, currentQueue) },
-                                        onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) }
+                                        onRemove = { viewModel.removeFromQueueByQueueId(item.queueId) },
+                                        onDragStart = { localY ->
+                                            draggedQueueId = item.queueId
+                                            activeDraggedSong = item.song
+                                            targetQueueIndex = index
+                                            isDraggingManual = false
+                                            accumulatedDragY = 0f
+                                        },
+                                        onDragUpdate = { dragAmount ->
+                                            if (draggedQueueId == item.queueId) {
+                                                accumulatedDragY += dragAmount
+                                                val steps = (accumulatedDragY / itemHeightPx.coerceAtLeast(1f)).roundToInt()
+                                                val newTarget = (index + steps).coerceIn(0, parentQueue.size - 1)
+                                                if (newTarget != targetQueueIndex) {
+                                                    targetQueueIndex = newTarget
+                                                }
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val currentDragged = draggedQueueId
+                                            val targetIdx = targetQueueIndex
+                                            if (currentDragged != null && targetIdx != null) {
+                                                val fromIdx = parentQueue.indexOfFirst { it.queueId == currentDragged }
+                                                if (fromIdx != -1 && fromIdx != targetIdx) {
+                                                    viewModel.reorderParentQueue(fromIdx, targetIdx)
+                                                }
+                                            }
+                                            draggedQueueId = null
+                                            activeDraggedSong = null
+                                            targetQueueIndex = null
+                                            accumulatedDragY = 0f
+                                        }
                                     )
                                 }
                             }
@@ -593,7 +590,7 @@ fun QueueBottomSheet(
                     modifier = Modifier
                         .padding(horizontal = 20.dp)
                         .fillMaxWidth()
-                        .offset { IntOffset(0, (currentDragY - itemTouchOffset).roundToInt()) }
+                        .offset { IntOffset(0, accumulatedDragY.roundToInt()) }
                         .zIndex(100f)
                 ) {
                     val itemScale by animateFloatAsState(
@@ -721,14 +718,10 @@ fun SmokedGlassQueueRow(
     song: Song,
     onPlayNow: () -> Unit,
     onRemove: () -> Unit,
-    onMoveUp: (() -> Unit)? = null,
-    onMoveDown: (() -> Unit)? = null,
-    onMoveToTop: (() -> Unit)? = null
+    onDragStart: (Float) -> Unit = {},
+    onDragUpdate: (Float) -> Unit = {},
+    onDragEnd: () -> Unit = {}
 ) {
-    var verticalDragOffset by remember { mutableStateOf(0f) }
-    val density = LocalDensity.current
-    val rowHeightPx = with(density) { 60.dp.toPx() }
-
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -750,33 +743,28 @@ fun SmokedGlassQueueRow(
                     .clip(RoundedCornerShape(8.dp))
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
-                            onDragStart = { verticalDragOffset = 0f },
-                            onDragEnd = {
-                                val steps = (verticalDragOffset / rowHeightPx).roundToInt()
-                                if (steps < 0 && onMoveUp != null) {
-                                    repeat(-steps) { onMoveUp.invoke() }
-                                } else if (steps > 0 && onMoveDown != null) {
-                                    repeat(steps) { onMoveDown.invoke() }
-                                }
-                                verticalDragOffset = 0f
+                            onDragStart = { offset ->
+                                onDragStart(offset.y)
                             },
-                            onDragCancel = { verticalDragOffset = 0f },
+                            onDragEnd = {
+                                onDragEnd()
+                            },
+                            onDragCancel = {
+                                onDragEnd()
+                            },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-                                verticalDragOffset += dragAmount
+                                onDragUpdate(dragAmount)
                             }
                         )
-                    }
-                    .clickable(enabled = onMoveToTop != null || onMoveUp != null) {
-                        onMoveToTop?.invoke() ?: onMoveUp?.invoke()
                     }
                     .padding(6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.DragHandle,
-                    contentDescription = "Reorder Queue",
-                    tint = if (onMoveToTop != null) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.50f),
+                    contentDescription = "Hold and Drag to Reorder",
+                    tint = Color(0xFF4CAF50),
                     modifier = Modifier.size(22.dp)
                 )
             }
