@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
@@ -19,7 +20,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +51,7 @@ fun ImmersivePlaylistHeader(
     totalDurationMs: Long,
     onPlayAllClick: () -> Unit,
     onShuffleClick: () -> Unit,
+    onAddClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val formattedDuration = remember(totalDurationMs) { formatTotalDuration(totalDurationMs) }
@@ -77,14 +78,14 @@ fun ImmersivePlaylistHeader(
                     .shadow(
                         elevation = 28.dp,
                         shape = RoundedCornerShape(36.dp),
-                        ambientColor = Color(0xFFE040FB),
-                        spotColor = Color(0xFFFF4081)
+                        ambientColor = Color(0xFF00E676),
+                        spotColor = Color(0xFF4CAF50)
                     )
                     .background(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                Color(0xFFE040FB).copy(alpha = 0.35f),
-                                Color(0xFFFF4081).copy(alpha = 0.18f),
+                                Color(0xFF4CAF50).copy(alpha = 0.35f),
+                                Color(0xFF00E676).copy(alpha = 0.18f),
                                 Color.Transparent
                             )
                         ),
@@ -189,29 +190,33 @@ fun ImmersivePlaylistHeader(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Action Bar (Play All & Shuffle)
+        // Action Bar (Play All, Shuffle & Add)
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth(0.92f),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Primary Glowing "Play All" CTA Button
             Box(
                 modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp)
                     .shadow(
-                        elevation = 16.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        spotColor = Color(0xFFFF4081),
-                        ambientColor = Color(0xFFE040FB)
+                        elevation = 12.dp,
+                        shape = RoundedCornerShape(26.dp),
+                        spotColor = Color(0xFF4CAF50),
+                        ambientColor = Color(0xFF00E676)
                     )
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(26.dp))
                     .background(
                         brush = Brush.horizontalGradient(
-                            colors = listOf(Color(0xFFE040FB), Color(0xFFFF4081))
+                            colors = listOf(Color(0xFF2E7D32), Color(0xFF4CAF50))
                         )
                     )
-                    .clickable(onClick = onPlayAllClick)
-                    .padding(horizontal = 28.dp, vertical = 12.dp)
+                    .clickable(onClick = onPlayAllClick),
+                contentAlignment = Alignment.Center
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -234,16 +239,16 @@ fun ImmersivePlaylistHeader(
                 }
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
-
             // Glassmorphic "Shuffle" Button
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
+                    .weight(1f)
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(26.dp))
                     .background(Color.White.copy(alpha = 0.10f))
-                    .border(1.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(24.dp))
-                    .clickable(onClick = onShuffleClick)
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(26.dp))
+                    .clickable(onClick = onShuffleClick),
+                contentAlignment = Alignment.Center
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -262,6 +267,26 @@ fun ImmersivePlaylistHeader(
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
+                    )
+                }
+            }
+
+            // Perfect Circle "Add Tracks" Button
+            if (onAddClick != null) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.10f))
+                        .border(1.5.dp, Color.White.copy(alpha = 0.20f), CircleShape)
+                        .clickable(onClick = onAddClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Tracks",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

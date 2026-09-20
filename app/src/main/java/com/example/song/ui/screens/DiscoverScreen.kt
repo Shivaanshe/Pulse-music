@@ -187,7 +187,7 @@ fun DiscoverScreen(
                             if (!isSearching) { 
                                 if (isArrangeModeEnabled) {
                                     TextButton(onClick = { viewModel.toggleArrangeMode(false) }, modifier = Modifier.padding(end = 8.dp)) {
-                                        Text("Done", fontWeight = FontWeight.Bold, color = Color(0xFFE91E63))
+                                        Text("Done", fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
                                     }
                                 } else {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -549,7 +549,7 @@ fun DiscoverScreen(
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         if (isOnlineSearching) {
-                                            CircularProgressIndicator(color = Color(0xFFE91E63))
+                                            CircularProgressIndicator(color = Color(0xFF4CAF50))
                                             Spacer(modifier = Modifier.height(16.dp))
                                             Text("Searching YouTube...", color = Color.White.copy(alpha = 0.72f))
                                         } else if (onlineSearchResults.isEmpty()) {
@@ -557,7 +557,7 @@ fun DiscoverScreen(
                                             Spacer(modifier = Modifier.height(16.dp))
                                             Button(
                                                 onClick = { viewModel.searchOnline(searchQuery, isLibrary = false) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63))
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
                                             ) {
                                                 Text("Search Online on YouTube", fontWeight = FontWeight.Bold)
                                             }
@@ -627,7 +627,8 @@ fun DiscoverScreen(
                                         )
                                         onSongClick()
                                     }
-                                }
+                                },
+                                onAddClick = { showAddSongDialog = true }
                             )
 
                             Row(
@@ -917,7 +918,6 @@ fun DiscoverScreen(
                 }
             }
         }
-        if (selectedPlaylist != null && !isSelectionMode) FloatingActionButton(onClick = { showAddSongDialog = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp).padding(bottom = 80.dp), containerColor = Color.White.copy(alpha = 0.8f), contentColor = Color(0xFFE91E63), shape = CircleShape) { Icon(Icons.Default.Add, contentDescription = "Add Song to Collection") }
         if (showAddSongDialog) {
             androidx.compose.ui.window.Dialog(onDismissRequest = { showAddSongDialog = false }) {
                 Surface(
@@ -1003,7 +1003,7 @@ fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving:
     val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
     val pulseScale by infiniteTransition.animateFloat(initialValue = 1f, targetValue = 1.02f, animationSpec = infiniteRepeatable(animation = tween(1200, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse), label = "PulseScale")
     val scale by animateFloatAsState(targetValue = if (isDragging) 1.05f else if (isSelected) 0.95f else if (isPlaying) pulseScale else 1f, animationSpec = if (isDragging || isSelected || isPlaying) spring(dampingRatio = Spring.DampingRatioMediumBouncy) else tween(300), label = "SelectionScale")
-    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).graphicsLayer { scaleX = scale; scaleY = scale; if (isDragging) shadowElevation = 16.dp.toPx() }.combinedClickable(enabled = enabled && !isResolving && !isArrangeMode, onClick = onClick, onLongClick = onLongClick).border(width = if (isDragging) 3.dp else if (isSelected || isPlaying) 2.dp else 0.dp, brush = when { isDragging -> Brush.linearGradient(colors = listOf(Color(0xFFFF4081), Color(0xFFFF4081))); isSelected -> Brush.linearGradient(colors = listOf(Color(0xFFE040FB), Color(0xFFFF4081))); isPlaying -> Brush.linearGradient(colors = listOf(Color(0xFF00E676), Color(0xFF1DE9B6))); else -> Brush.linearGradient(colors = listOf(Color.Transparent, Color.Transparent)) }, shape = RoundedCornerShape(20.dp)), color = when { isSelected -> Color.White.copy(alpha = 0.4f); isPlaying -> Color.White.copy(alpha = 0.25f); else -> Color(0xFF121216).copy(alpha = 0.55f) }, shape = RoundedCornerShape(20.dp)) {
+    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).graphicsLayer { scaleX = scale; scaleY = scale; if (isDragging) shadowElevation = 16.dp.toPx() }.combinedClickable(enabled = enabled && !isResolving && !isArrangeMode, onClick = onClick, onLongClick = onLongClick).border(width = if (isDragging) 3.dp else if (isSelected || isPlaying) 2.dp else 0.dp, brush = when { isDragging -> Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF4CAF50))); isSelected -> Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF00E676))); isPlaying -> Brush.linearGradient(colors = listOf(Color(0xFF00E676), Color(0xFF1DE9B6))); else -> Brush.linearGradient(colors = listOf(Color.Transparent, Color.Transparent)) }, shape = RoundedCornerShape(20.dp)), color = when { isSelected -> Color.White.copy(alpha = 0.4f); isPlaying -> Color.White.copy(alpha = 0.25f); else -> Color(0xFF121216).copy(alpha = 0.55f) }, shape = RoundedCornerShape(20.dp)) {
         Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (isArrangeMode) Icon(imageVector = Icons.Default.DragIndicator, contentDescription = "Reorder", tint = Color(0xFF424242).copy(alpha = 0.6f), modifier = Modifier.padding(end = 12.dp).size(24.dp))
             Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(Color.Gray.copy(alpha = 0.2f))) {
@@ -1018,7 +1018,7 @@ fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving:
                 Text(text = item.artist ?: if (item.isPlaylist) "YouTube Playlist" else "YouTube Stream", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Color(0xFFE91E63))
+                if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Color(0xFF4CAF50))
                 else { IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(32.dp)) { Icon(imageVector = if (item.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = "Favorite", tint = if (item.isFavorite) Color.Red else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(20.dp)) }; Spacer(modifier = Modifier.width(8.dp)); IconButton(onClick = onClick, modifier = Modifier.background(Color.White.copy(alpha = 0.2f), CircleShape).size(32.dp), enabled = enabled) { Icon(imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = Color.White, modifier = Modifier.size(20.dp)) } }
                 if (onOptionsClick != null && !selectionMode && !isArrangeMode) {
                     IconButton(onClick = onOptionsClick) {

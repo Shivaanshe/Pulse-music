@@ -200,7 +200,7 @@ fun PlaylistDetailScreen(
                                     onClick = { viewModel.toggleArrangeMode(false) },
                                     modifier = Modifier.align(Alignment.CenterEnd)
                                 ) {
-                                    Text("Done", fontWeight = FontWeight.Bold, color = Color(0xFFFF4081))
+                                    Text("Done", fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
                                 }
                             } else {
                                 IconButton(
@@ -312,13 +312,13 @@ fun PlaylistDetailScreen(
                                         .padding(horizontal = 24.dp, vertical = 8.dp)
                                         .border(
                                             width = 2.dp,
-                                            brush = Brush.linearGradient(colors = listOf(Color(0xFFFF4081).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.2f))),
+                                            brush = Brush.linearGradient(colors = listOf(Color(0xFF4CAF50).copy(alpha = 0.5f), Color(0xFF4CAF50).copy(alpha = 0.2f))),
                                             shape = RoundedCornerShape(20.dp)
                                         )
                                         .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text("DROP SONG HERE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF4081).copy(alpha = 0.6f), letterSpacing = 2.sp))
+                                    Text("DROP SONG HERE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, color = Color(0xFF4CAF50).copy(alpha = 0.6f), letterSpacing = 2.sp))
                                 }
                             }
 
