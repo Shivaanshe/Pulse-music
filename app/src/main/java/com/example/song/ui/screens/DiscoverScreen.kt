@@ -2,6 +2,7 @@ package com.example.song.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import com.example.song.ui.components.ImmersivePlaylistHeader
 import com.example.song.ui.components.OnlineSearchResultCard
 import com.example.song.viewmodel.ItemActionState
 import androidx.compose.animation.core.*
@@ -596,14 +597,67 @@ fun DiscoverScreen(
                         onReorderEnd = { if (draggedItemIndex != null && targetIndex != null) { isManualOrder = true; val mutable = localPlaylistItems.toMutableList(); val item = mutable.removeAt(draggedItemIndex!!); mutable.add(targetIndex!!, item); localPlaylistItems = mutable; viewModel.updateStreamingItems(localPlaylistItems.mapIndexed { index, si -> si.copy(position = index) }); scope.launch { delay(800); isManualOrder = false } }; draggedItemIndex = null; activeDraggedItem = null; targetIndex = null }
                     ), contentPadding = PaddingValues(bottom = 80.dp)) {
                         item {
-                            Text(
-                                "Playlist Content",
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
+                            val playlistCover = selectedPlaylist?.thumbnailUrl
+                                ?: localPlaylistItems.firstOrNull { !it.thumbnailUrl.isNullOrEmpty() }?.thumbnailUrl
+                            val totalDurationMs = remember(localPlaylistItems) { localPlaylistItems.sumOf { it.duration } }
+                            
+                            ImmersivePlaylistHeader(
+                                title = if (isArrangeModeEnabled) "Arrange Songs" else (selectedPlaylist?.title ?: "Playlist"),
+                                subtitle = selectedPlaylist?.artist,
+                                coverUrl = playlistCover,
+                                songCount = localPlaylistItems.size,
+                                totalDurationMs = totalDurationMs,
+                                onPlayAllClick = {
+                                    if (localPlaylistItems.isNotEmpty()) {
+                                        viewModel.playStreamingItem(
+                                            item = localPlaylistItems.first(),
+                                            queue = localPlaylistItems,
+                                            contextTitle = selectedPlaylist?.title ?: "Playlist"
+                                        )
+                                        onSongClick()
+                                    }
+                                },
+                                onShuffleClick = {
+                                    if (localPlaylistItems.isNotEmpty()) {
+                                        val shuffled = localPlaylistItems.shuffled()
+                                        viewModel.playStreamingItem(
+                                            item = shuffled.first(),
+                                            queue = shuffled,
+                                            contextTitle = "Shuffled - ${selectedPlaylist?.title ?: "Playlist"}"
+                                        )
+                                        onSongClick()
+                                    }
+                                }
                             )
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Playlist Content",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "${localPlaylistItems.size}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White.copy(alpha = 0.9f)
+                                        )
+                                    )
+                                }
+                            }
                         }
                         itemsIndexed(localPlaylistItems, key = { _, item -> item.id }) { index, item ->
                             val isCurrentItemPlaying = currentPlayingSong?.id == (1_000_000 + item.id)

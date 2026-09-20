@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.Player
 import com.example.song.data.model.Song
+import com.example.song.ui.components.ImmersivePlaylistHeader
 import com.example.song.ui.components.SongListItem
 import com.example.song.util.dragGestureHandler
 import com.example.song.viewmodel.SongViewModel
@@ -176,59 +177,14 @@ fun PlaylistDetailScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(300.dp)
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            // Cover Image with Gradient
-                            val coverImage = localSongsInPlaylist.firstOrNull()?.imageUrl
-                            if (coverImage != null) {
-                                coil.compose.AsyncImage(
-                                    model = coverImage,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            brush = Brush.verticalGradient(
-                                                colors = listOf(Color(0xFF64B5F6), Color(0xFF1976D2))
-                                            )
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(100.dp),
-                                        tint = Color.White.copy(alpha = 0.5f)
-                                    )
-                                }
-                            }
-
-                            // Dark overlay gradient
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                Color.Black.copy(alpha = 0.7f)
-                                            )
-                                        )
-                                    )
-                            )
-
-                            // 3. Back Button (Safe Area)
                             if (!isSelectionMode && !isArrangeModeEnabled) {
                                 IconButton(
                                     onClick = onBackClick,
                                     modifier = Modifier
-                                        .statusBarsPadding()
-                                        .padding(16.dp)
-                                        .align(Alignment.TopStart)
+                                        .align(Alignment.CenterStart)
                                         .background(Color.White.copy(alpha = 0.2f), CircleShape)
                                 ) {
                                     Icon(
@@ -239,80 +195,81 @@ fun PlaylistDetailScreen(
                                 }
                             }
 
-                            // Done Button for Arrange Mode
                             if (isArrangeModeEnabled) {
                                 TextButton(
                                     onClick = { viewModel.toggleArrangeMode(false) },
-                                    modifier = Modifier
-                                        .statusBarsPadding()
-                                        .padding(16.dp)
-                                        .align(Alignment.TopEnd)
+                                    modifier = Modifier.align(Alignment.CenterEnd)
                                 ) {
-                                    Text("Done", fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("Done", fontWeight = FontWeight.Bold, color = Color(0xFFFF4081))
+                                }
+                            } else {
+                                IconButton(
+                                    onClick = { viewModel.toggleRepeatMode() },
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = when (repeatMode) {
+                                            Player.REPEAT_MODE_ONE -> Icons.Default.RepeatOne
+                                            else -> Icons.Default.Repeat
+                                        },
+                                        contentDescription = "Repeat Mode",
+                                        tint = if (repeatMode == Player.REPEAT_MODE_OFF) Color.White.copy(alpha = 0.6f) else Color(0xFF00E676)
+                                    )
                                 }
                             }
-
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.BottomCenter)
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = if (isArrangeModeEnabled) "Arrange Songs" else playlistName,
-                                    style = MaterialTheme.typography.headlineLarge.copy(
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        textAlign = TextAlign.Center
-                                    ),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "${localSongsInPlaylist.size} songs",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(alpha = 0.7f)
-                                )
-                            }
                         }
-                    }
 
-                    // Playlist Controls
-                    item {
+                        val coverImage = localSongsInPlaylist.firstOrNull { !it.imageUrl.isNullOrEmpty() }?.imageUrl
+                        val totalDurationMs = remember(localSongsInPlaylist) { localSongsInPlaylist.sumOf { it.duration } }
+
+                        ImmersivePlaylistHeader(
+                            title = if (isArrangeModeEnabled) "Arrange Songs" else playlistName,
+                            subtitle = null,
+                            coverUrl = coverImage,
+                            songCount = localSongsInPlaylist.size,
+                            totalDurationMs = totalDurationMs,
+                            onPlayAllClick = {
+                                if (localSongsInPlaylist.isNotEmpty()) {
+                                    viewModel.playSong(localSongsInPlaylist.first(), localSongsInPlaylist)
+                                    onSongClick()
+                                }
+                            },
+                            onShuffleClick = {
+                                if (localSongsInPlaylist.isNotEmpty()) {
+                                    val shuffled = localSongsInPlaylist.shuffled()
+                                    viewModel.playSong(shuffled.first(), shuffled)
+                                    onSongClick()
+                                }
+                            }
+                        )
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Button(
-                                onClick = {
-                                    if (localSongsInPlaylist.isNotEmpty()) {
-                                        viewModel.playSong(localSongsInPlaylist.first(), localSongsInPlaylist)
-                                        onSongClick()
-                                    }
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63))
+                            Text(
+                                "Songs in Playlist",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Play All")
-                            }
-                            
-                            IconButton(
-                                onClick = { viewModel.toggleRepeatMode() }
-                            ) {
-                                Icon(
-                                    imageVector = when (repeatMode) {
-                                        Player.REPEAT_MODE_ONE -> Icons.Default.RepeatOne
-                                        else -> Icons.Default.Repeat
-                                    },
-                                    contentDescription = null, 
-                                    tint = if (repeatMode == Player.REPEAT_MODE_OFF) Color(0xFF424242) else Color(0xFF4CAF50)
+                                Text(
+                                    text = "${localSongsInPlaylist.size}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
                                 )
                             }
                         }

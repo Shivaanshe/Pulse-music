@@ -30,7 +30,12 @@ object YoutubeStreamHandler {
                 if (isPlaylist) {
                     addOption("--dump-single-json")
                     addOption("--flat-playlist")
-                    addOption("--playlist-end", "50")
+                    // Cap at 50 tracks only for auto-generated YouTube Mix / Radio / Remix playlists (list=RD..., list=UL...)
+                    val isMixOrRemixPlaylist = sanitizedUrl.contains("list=RD", ignoreCase = true) ||
+                            sanitizedUrl.contains("list=UL", ignoreCase = true)
+                    if (isMixOrRemixPlaylist) {
+                        addOption("--playlist-end", "50")
+                    }
                 } else {
                     addOption("--dump-json")
                     addOption("--no-playlist")
