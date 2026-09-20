@@ -60,6 +60,7 @@ import com.example.song.data.model.StreamingItem
 import com.example.song.util.dragGestureHandler
 import com.example.song.util.horizontalDragGestureHandler
 import com.example.song.viewmodel.SongViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.window.Dialog
@@ -71,6 +72,7 @@ import com.example.song.ui.spotlight.TourStep
 import com.example.song.ui.spotlight.spotlightTarget
 
 import com.example.song.viewmodel.DownloadState
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -140,7 +142,9 @@ fun DiscoverScreen(
     LaunchedEffect(listState) {
         snapshotFlow { 
             (listState.firstVisibleItemIndex * 200f) + listState.firstVisibleItemScrollOffset 
-        }.collect { offset ->
+        }
+        .distinctUntilChanged { old, new -> abs(old - new) < 15f }
+        .collect { offset ->
             viewModel.updateGlobalScrollOffset(offset)
         }
     }
@@ -534,7 +538,7 @@ fun DiscoverScreen(
                                 val targetDisplacement = when { isDragging -> 0f; draggedItemIndex == null || targetIndex == null || itemHeightPx == 0f -> 0f; draggedItemIndex!! < targetIndex!! && index > draggedItemIndex!! && index <= targetIndex!! -> -itemHeightPx; draggedItemIndex!! > targetIndex!! && index < draggedItemIndex!! && index >= targetIndex!! -> itemHeightPx; else -> 0f }
                                 val itemTranslationY by animateFloatAsState(targetValue = targetDisplacement, animationSpec = spring(stiffness = Spring.StiffnessLow), label = "DragTranslation")
                                 val isGhostSlot = !isDragging && targetIndex == index
-                                Box(modifier = Modifier.fillMaxWidth().animateItem().zIndex(if (isGhostSlot) 1f else 0f).onGloballyPositioned { if (measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat() }.graphicsLayer { translationY = itemTranslationY }) {
+                                Box(modifier = Modifier.fillMaxWidth().animateItem().zIndex(if (isGhostSlot) 1f else 0f).onGloballyPositioned { if (isArrangeModeEnabled && measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat() }.graphicsLayer { translationY = itemTranslationY }) {
                                     if (isGhostSlot) { Box(modifier = Modifier.fillMaxWidth().height(with(LocalDensity.current) { measuredItemHeightPx.toDp() }).graphicsLayer { translationY = -itemTranslationY }.padding(horizontal = 24.dp, vertical = 8.dp).border(width = 2.dp, brush = Brush.linearGradient(colors = listOf(Color(0xFFFF4081).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.2f))), shape = RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) { Text("DROP SONG HERE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF4081).copy(alpha = 0.6f), letterSpacing = 2.sp)) } }
                                     Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) { StreamingItemCard(item = item, enabled = isEngineReady, isResolving = resolvingUrlId == item.id, isPlaying = isPlaying && isCurrentItemPlaying, isArrangeMode = isArrangeModeEnabled, isDragging = false, onClick = { if (isSelectionMode) viewModel.toggleStreamingSelection(item.id) else if (isEngineReady) { if (isCurrentItemPlaying) viewModel.togglePlayPause() else { viewModel.playStreamingItem(item, localSingleSongs); onSongClick() } } }, onFavoriteToggle = { viewModel.toggleStreamingFavorite(item) }, onDelete = { viewModel.deleteStreamingItem(item) }, isSelected = selectedStreamingIds.contains(item.id), onLongClick = { viewModel.toggleSelectionMode(true); viewModel.toggleStreamingSelection(item.id) }, onOptionsClick = { viewModel.openSongOptions(
                                         Song(id = 1_000_000 + item.id, title = item.title, artist = item.artist ?: "Unknown Artist", audioUri = item.youtubeUrl, imageUrl = item.thumbnailUrl, isFavorite = item.isFavorite, duration = item.duration)
@@ -667,7 +671,7 @@ fun DiscoverScreen(
                             val targetDisplacement = when { isDragging -> 0f; draggedItemIndex == null || targetIndex == null || itemHeightPx == 0f -> 0f; draggedItemIndex!! < targetIndex!! && index > draggedItemIndex!! && index <= targetIndex!! -> -itemHeightPx; draggedItemIndex!! > targetIndex!! && index < draggedItemIndex!! && index >= targetIndex!! -> itemHeightPx; else -> 0f }
                             val itemTranslationY by animateFloatAsState(targetValue = targetDisplacement, animationSpec = spring(stiffness = Spring.StiffnessLow), label = "DragTranslation")
                             val isGhostSlot = !isDragging && targetIndex == index
-                            Box(modifier = Modifier.fillMaxWidth().animateItem().zIndex(if (isGhostSlot) 1f else 0f).onGloballyPositioned { if (measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat() }.graphicsLayer { translationY = itemTranslationY }) {
+                            Box(modifier = Modifier.fillMaxWidth().animateItem().zIndex(if (isGhostSlot) 1f else 0f).onGloballyPositioned { if (isArrangeModeEnabled && measuredItemHeightPx == 0f) measuredItemHeightPx = it.size.height.toFloat() }.graphicsLayer { translationY = itemTranslationY }) {
                                 if (isGhostSlot) { Box(modifier = Modifier.fillMaxWidth().height(with(LocalDensity.current) { measuredItemHeightPx.toDp() }).graphicsLayer { translationY = -itemTranslationY }.padding(horizontal = 24.dp, vertical = 8.dp).border(width = 2.dp, brush = Brush.linearGradient(colors = listOf(Color(0xFFFF4081).copy(alpha = 0.5f), Color(0xFFFF4081).copy(alpha = 0.2f))), shape = RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) { Text("DROP SONG HERE", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF4081).copy(alpha = 0.6f), letterSpacing = 2.sp)) } }
                                 Box(modifier = Modifier.graphicsLayer { alpha = if (isDragging) 0f else 1f }) { StreamingItemCard(item = item, enabled = isEngineReady, isResolving = resolvingUrlId == item.id, isPlaying = isPlaying && isCurrentItemPlaying, isArrangeMode = isArrangeModeEnabled, isDragging = false, onClick = { if (isSelectionMode) viewModel.toggleStreamingSelection(item.id) else if (isEngineReady) { if (isCurrentItemPlaying) viewModel.togglePlayPause() else { viewModel.playStreamingItem(item, localPlaylistItems); onSongClick() } } }, onFavoriteToggle = { viewModel.toggleStreamingFavorite(item) }, onDelete = { viewModel.deleteStreamingItem(item) }, isSelected = selectedStreamingIds.contains(item.id), onLongClick = { viewModel.toggleSelectionMode(true); viewModel.toggleStreamingSelection(item.id) }, onOptionsClick = { viewModel.openSongOptions(
                                     Song(id = 1_000_000 + item.id, title = item.title, artist = item.artist ?: "Unknown Artist", audioUri = item.youtubeUrl, imageUrl = item.thumbnailUrl, isFavorite = item.isFavorite, duration = item.duration)
@@ -919,6 +923,19 @@ fun DiscoverScreen(
             }
         }
         if (showAddSongDialog) {
+            val currentPlaylistItems by viewModel.getItemsForStreamingPlaylist(selectedPlaylist?.youtubeUrl ?: "").collectAsState(initial = emptyList())
+            val availableTracksToAdd = remember(singleSongs, selectedPlaylist, currentPlaylistItems) {
+                if (selectedPlaylist == null) emptyList()
+                else {
+                    val currentPlaylistUrls = currentPlaylistItems.map { it.youtubeUrl }.toSet()
+                    val currentPlaylistIds = currentPlaylistItems.map { it.id }.toSet()
+                    singleSongs.filter { candidate ->
+                        candidate.id !in currentPlaylistIds &&
+                        candidate.youtubeUrl !in currentPlaylistUrls
+                    }
+                }
+            }
+
             androidx.compose.ui.window.Dialog(onDismissRequest = { showAddSongDialog = false }) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(0.9f).height(550.dp),
@@ -941,41 +958,59 @@ fun DiscoverScreen(
                                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
                             ) {
                                 LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp)) {
-                                    items(allStreamingSongs) { item -> 
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .clickable { 
-                                                    viewModel.addStreamingItemToPlaylist(item.id, selectedPlaylist?.youtubeUrl)
-                                                    showAddSongDialog = false 
-                                                }
-                                                .padding(10.dp), 
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) { 
-                                            AsyncImage(
-                                                model = item.thumbnailUrl, 
-                                                contentDescription = null, 
-                                                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.2f)), 
-                                                contentScale = ContentScale.Crop
-                                            )
-                                            Spacer(modifier = Modifier.width(16.dp))
-                                            Column { 
+                                    if (availableTracksToAdd.isEmpty()) {
+                                        item {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(32.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
                                                 Text(
-                                                    text = item.title, 
-                                                    style = MaterialTheme.typography.bodyLarge.copy(color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold), 
-                                                    maxLines = 1, 
-                                                    overflow = TextOverflow.Ellipsis
+                                                    text = "No additional recommended tracks available.",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = Color.White.copy(alpha = 0.6f),
+                                                    textAlign = TextAlign.Center
                                                 )
-                                                Text(
-                                                    text = item.artist ?: "YouTube Stream", 
-                                                    style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.72f), fontSize = 14.sp), 
-                                                    maxLines = 1, 
-                                                    overflow = TextOverflow.Ellipsis
-                                                ) 
+                                            }
+                                        }
+                                    } else {
+                                        items(availableTracksToAdd, key = { it.id }) { item -> 
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .clickable { 
+                                                        viewModel.addStreamingItemToPlaylist(item.id, selectedPlaylist?.youtubeUrl)
+                                                        showAddSongDialog = false 
+                                                    }
+                                                    .padding(10.dp), 
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) { 
+                                                AsyncImage(
+                                                    model = item.thumbnailUrl, 
+                                                    contentDescription = null, 
+                                                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.2f)), 
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                                Spacer(modifier = Modifier.width(16.dp))
+                                                Column(modifier = Modifier.weight(1f)) { 
+                                                    Text(
+                                                        text = item.title, 
+                                                        style = MaterialTheme.typography.bodyLarge.copy(color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold), 
+                                                        maxLines = 1, 
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = item.artist ?: "YouTube Stream", 
+                                                        style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.72f), fontSize = 13.sp), 
+                                                        maxLines = 1, 
+                                                        overflow = TextOverflow.Ellipsis
+                                                    ) 
+                                                } 
                                             } 
-                                        } 
-                                    } 
+                                        }
+                                    }
                                 }
                             }
                             Spacer(modifier = Modifier.height(16.dp))
@@ -1000,10 +1035,39 @@ fun DiscoverScreen(
 @Composable
 fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving: Boolean = false, isPlaying: Boolean = false, onClick: () -> Unit, onFavoriteToggle: () -> Unit, onDelete: () -> Unit, isSelected: Boolean = false, onLongClick: () -> Unit = {}, onOptionsClick: (() -> Unit)? = null, selectionMode: Boolean = false, isArrangeMode: Boolean = false, isDragging: Boolean = false) {
     var showDeleteDialog by remember { mutableStateOf(false) }
-    val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
-    val pulseScale by infiniteTransition.animateFloat(initialValue = 1f, targetValue = 1.02f, animationSpec = infiniteRepeatable(animation = tween(1200, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse), label = "PulseScale")
-    val scale by animateFloatAsState(targetValue = if (isDragging) 1.05f else if (isSelected) 0.95f else if (isPlaying) pulseScale else 1f, animationSpec = if (isDragging || isSelected || isPlaying) spring(dampingRatio = Spring.DampingRatioMediumBouncy) else tween(300), label = "SelectionScale")
-    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).graphicsLayer { scaleX = scale; scaleY = scale; if (isDragging) shadowElevation = 16.dp.toPx() }.combinedClickable(enabled = enabled && !isResolving && !isArrangeMode, onClick = onClick, onLongClick = onLongClick).border(width = if (isDragging) 3.dp else if (isSelected || isPlaying) 2.dp else 0.dp, brush = when { isDragging -> Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF4CAF50))); isSelected -> Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF00E676))); isPlaying -> Brush.linearGradient(colors = listOf(Color(0xFF00E676), Color(0xFF1DE9B6))); else -> Brush.linearGradient(colors = listOf(Color.Transparent, Color.Transparent)) }, shape = RoundedCornerShape(20.dp)), color = when { isSelected -> Color.White.copy(alpha = 0.4f); isPlaying -> Color.White.copy(alpha = 0.25f); else -> Color(0xFF121216).copy(alpha = 0.55f) }, shape = RoundedCornerShape(20.dp)) {
+    val targetScale = when {
+        isDragging -> 1.05f
+        isSelected -> 0.95f
+        else -> 1f
+    }
+    val scale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = if (isDragging || isSelected) spring(dampingRatio = Spring.DampingRatioMediumBouncy) else tween(200),
+        label = "SelectionScale"
+    )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale; clip = true; if (isDragging) shadowElevation = 16.dp.toPx() }
+            .combinedClickable(enabled = enabled && !isResolving && !isArrangeMode, onClick = onClick, onLongClick = onLongClick)
+            .border(
+                width = if (isDragging) 3.dp else if (isSelected || isPlaying) 2.dp else 0.dp,
+                brush = when {
+                    isDragging -> Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF4CAF50)))
+                    isSelected -> Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF00E676)))
+                    isPlaying -> Brush.linearGradient(colors = listOf(Color(0xFF00E676), Color(0xFF1DE9B6)))
+                    else -> Brush.linearGradient(colors = listOf(Color.Transparent, Color.Transparent))
+                },
+                shape = RoundedCornerShape(20.dp)
+            ),
+        color = when {
+            isSelected -> Color.White.copy(alpha = 0.4f)
+            isPlaying -> Color.White.copy(alpha = 0.25f)
+            else -> Color(0xFF121216).copy(alpha = 0.55f)
+        },
+        shape = RoundedCornerShape(20.dp)
+    ) {
         Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (isArrangeMode) Icon(imageVector = Icons.Default.DragIndicator, contentDescription = "Reorder", tint = Color(0xFF424242).copy(alpha = 0.6f), modifier = Modifier.padding(end = 12.dp).size(24.dp))
             Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(Color.Gray.copy(alpha = 0.2f))) {
@@ -1014,8 +1078,15 @@ fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving:
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
+                val itemSubtitle = when {
+                    !item.artist.isNullOrBlank() && item.artist != "Unknown Artist" -> item.artist
+                    item.isPlaylist && item.youtubeUrl.contains("spotify.com") -> "Spotify Playlist"
+                    item.isPlaylist -> "YouTube Playlist"
+                    item.youtubeUrl.contains("spotify.com") -> "Spotify Track"
+                    else -> "YouTube Stream"
+                }
                 Text(text = item.title, style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = item.artist ?: if (item.isPlaylist) "YouTube Playlist" else "YouTube Stream", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = itemSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Color(0xFF4CAF50))
@@ -1035,8 +1106,13 @@ fun StreamingItemCard(item: StreamingItem, enabled: Boolean = true, isResolving:
 @Composable
 fun StreamingPlaylistCard(item: StreamingItem, isSelected: Boolean = false, selectionMode: Boolean = false, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
     val scale by animateFloatAsState(targetValue = if (isSelected) 0.92f else 1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "SelectionScale")
+    val playlistSubtitle = when {
+        item.youtubeUrl.contains("spotify.com") || item.artist?.equals("Spotify", ignoreCase = true) == true -> "Spotify Playlist"
+        !item.artist.isNullOrBlank() && item.artist != "Unknown Artist" && item.artist != "YouTube" -> item.artist
+        else -> "YouTube Playlist"
+    }
     Column(modifier = Modifier.width(120.dp).graphicsLayer(scaleX = scale, scaleY = scale).combinedClickable(onClick = onClick, onLongClick = onLongClick), horizontalAlignment = Alignment.Start) {
-        Box(modifier = Modifier.size(120.dp).shadow(if (isSelected) 4.dp else 12.dp, RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(brush = Brush.verticalGradient(colors = listOf(Color(0xFFF06292), Color(0xFFBA68C8)))).border(width = if (isSelected) 3.dp else 1.5.dp, brush = if (isSelected) Brush.linearGradient(colors = listOf(Color(0xFFE040FB), Color(0xFFFF4081))) else Brush.linearGradient(colors = listOf(Color.White.copy(alpha = 0.3f), Color.White.copy(alpha = 0.3f))), shape = RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(120.dp).shadow(if (isSelected) 4.dp else 12.dp, RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(brush = Brush.verticalGradient(colors = listOf(Color(0xFF2B2C38), Color(0xFF14151E)))).border(width = if (isSelected) 3.dp else 1.5.dp, brush = if (isSelected) Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF00E676))) else Brush.linearGradient(colors = listOf(Color.White.copy(alpha = 0.3f), Color.White.copy(alpha = 0.3f))), shape = RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
             if (!item.thumbnailUrl.isNullOrEmpty()) AsyncImage(model = item.thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             else Icon(Icons.Default.MusicNote, contentDescription = null, modifier = Modifier.size(56.dp), tint = Color.White.copy(alpha = 0.5f))
             Box(modifier = Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.BottomEnd) { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, modifier = Modifier.size(24.dp), tint = Color.White) }
@@ -1052,7 +1128,7 @@ fun StreamingPlaylistCard(item: StreamingItem, isSelected: Boolean = false, sele
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = "YouTube Playlist",
+            text = playlistSubtitle,
             style = MaterialTheme.typography.bodySmall,
             color = Color.White.copy(alpha = 0.72f),
             maxLines = 1,

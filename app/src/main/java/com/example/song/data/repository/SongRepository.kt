@@ -139,6 +139,10 @@ class SongRepository(
         streamingDao.updateFavorite(itemId, isFavorite)
     }
 
+    suspend fun getStreamingItemById(itemId: Int): StreamingItem? {
+        return streamingDao.getItemById(itemId)
+    }
+
     suspend fun updateStreamingItemParentPlaylist(itemId: Int, playlistUrl: String?) {
         streamingDao.updateParentPlaylist(itemId, playlistUrl)
     }

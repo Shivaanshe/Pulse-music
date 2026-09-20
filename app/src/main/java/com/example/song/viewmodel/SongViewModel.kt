@@ -388,7 +388,31 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addStreamingItemToPlaylist(itemId: Int, playlistUrl: String?) {
         viewModelScope.launch {
-            repository.updateStreamingItemParentPlaylist(itemId, playlistUrl)
+            if (playlistUrl != null) {
+                val existingItem = repository.getStreamingItemById(itemId)
+                if (existingItem != null) {
+                    val currentPlaylistItems = repository.getItemsForStreamingPlaylist(playlistUrl).first()
+                    val minPosition = currentPlaylistItems.minOfOrNull { it.position } ?: 0
+
+                    if (existingItem.parentPlaylistUrl == null) {
+                        // Create a copy at the TOP (beginning) of the playlist so original stays in Recommended
+                        val playlistCopy = existingItem.copy(
+                            id = 0, // Room auto-generates a new primary key
+                            parentPlaylistUrl = playlistUrl,
+                            position = minPosition - 1
+                        )
+                        repository.insertStreamingItems(listOf(playlistCopy))
+                    } else {
+                        val updated = existingItem.copy(
+                            parentPlaylistUrl = playlistUrl,
+                            position = minPosition - 1
+                        )
+                        repository.updateStreamingItems(listOf(updated))
+                    }
+                }
+            } else {
+                repository.updateStreamingItemParentPlaylist(itemId, playlistUrl)
+            }
         }
     }
 
