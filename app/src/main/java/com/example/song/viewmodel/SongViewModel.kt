@@ -515,6 +515,46 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 if (future.isDone && !future.isCancelled) {
                     val controller = future.get()
                     mediaController = controller
+
+                    // 🛡️ Queue Restoration on App Reopen / Background Reconnect
+                    if (_currentQueue.value.isEmpty() && controller.mediaItemCount > 0) {
+                        val restoredSongs = mutableListOf<Song>()
+                        for (i in 0 until controller.mediaItemCount) {
+                            val item = controller.getMediaItemAt(i)
+                            val songId = item.mediaId.toIntOrNull()
+                            if (songId != null) {
+                                val song = _allSongs.value.find { it.id == songId }
+                                    ?: _allStreamingSongs.value.find { (1_000_000 + it.id) == songId }?.let {
+                                        Song(
+                                            id = 1_000_000 + it.id,
+                                            title = it.title,
+                                            artist = it.artist ?: "Unknown Artist",
+                                            audioUri = it.youtubeUrl,
+                                            imageUrl = it.thumbnailUrl,
+                                            duration = it.duration
+                                        )
+                                    }
+                                    ?: Song(
+                                        id = songId,
+                                        title = item.mediaMetadata.title?.toString() ?: "Unknown",
+                                        artist = item.mediaMetadata.artist?.toString() ?: "Unknown",
+                                        audioUri = item.mediaMetadata.extras?.getString("youtube_url") ?: "",
+                                        imageUrl = item.mediaMetadata.extras?.getString("custom_artwork_url")
+                                    )
+                                restoredSongs.add(song)
+                            }
+                        }
+
+                        val curIndex = controller.currentMediaItemIndex
+                        if (curIndex in restoredSongs.indices) {
+                            _historyStack.value = restoredSongs.subList(0, curIndex)
+                            _currentPlayingSong.value = restoredSongs[curIndex]
+                            _parentQueue.value = restoredSongs.subList(curIndex + 1, restoredSongs.size).map { QueueItem(song = it) }
+                            _sourcePlaylist.value = restoredSongs
+                            recomputeCombinedQueue(updateService = false)
+                        }
+                    }
+
                     controller.addListener(object : Player.Listener {
                         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                             mediaItem?.let { item ->
@@ -879,20 +919,28 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             if (currentSong != null && currentSong.id != activeSongId) {
                 if (history.isEmpty() || history.last().id != currentSong.id) {
                     history.add(currentSong)
-                    _historyStack.value = history
                 }
             }
 
-            if (manual.isNotEmpty() && manual.first().song.id == activeSongId) {
-                _manualQueue.value = manual.drop(1)
-            } else if (manual.any { it.song.id == activeSongId }) {
-                _manualQueue.value = manual.filter { it.song.id != activeSongId }
-            } else if (parent.isNotEmpty()) {
-                val parentMatchIdx = parent.indexOfFirst { it.song.id == activeSongId }
-                if (parentMatchIdx != -1) {
-                    _parentQueue.value = parent.drop(parentMatchIdx + 1)
-                }
+            val inManual = manual.indexOfFirst { it.song.id == activeSongId }
+            val inParent = parent.indexOfFirst { it.song.id == activeSongId }
+
+            if (inManual != -1) {
+                // Landed in Manual Queue: Move skipped manual items to history
+                val skippedManual = manual.subList(0, inManual).map { it.song }
+                history.addAll(skippedManual)
+                _manualQueue.value = manual.drop(inManual + 1)
+            } else if (inParent != -1) {
+                // Landed in Parent Queue: We skipped all remaining manual items, move them to history
+                val skippedManual = manual.map { it.song }
+                history.addAll(skippedManual)
+                _manualQueue.value = emptyList()
+
+                val skippedParent = parent.subList(0, inParent).map { it.song }
+                history.addAll(skippedParent)
+                _parentQueue.value = parent.drop(inParent + 1)
             }
+            _historyStack.value = history
         }
 
         // 🛡️ Do NOT trigger updateServiceQueue during an ExoPlayer transition!
@@ -901,8 +949,6 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun recomputeCombinedQueue(updateService: Boolean = true) {
         val activeSong = _currentPlayingSong.value
-        val activeItem = activeSong?.let { QueueItem(queueId = "active_playing", song = it) }
-
         val manualItems = _manualQueue.value
         var parentItems = _parentQueue.value
 
@@ -930,16 +976,15 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        val combinedItems = listOfNotNull(activeItem) + manualItems + parentItems
-        val combinedSongs = combinedItems.map { it.song }
-
-        if (_isShuffleEnabled.value && combinedSongs.size > 1) {
-            val head = combinedSongs.subList(0, 1)
-            val tail = combinedSongs.subList(1, combinedSongs.size).shuffled()
-            _currentQueue.value = head + tail
+        // 🛡️ CRITICAL ORDER RULE: Manual items MUST play in exact user-queued order BEFORE parent items!
+        val combinedSongs = if (_isShuffleEnabled.value) {
+            val shuffledParentSongs = parentItems.map { it.song }.shuffled()
+            listOfNotNull(activeSong) + manualItems.map { it.song } + shuffledParentSongs
         } else {
-            _currentQueue.value = combinedSongs
+            listOfNotNull(activeSong) + manualItems.map { it.song } + parentItems.map { it.song }
         }
+
+        _currentQueue.value = combinedSongs
 
         if (updateService) {
             updateServiceQueue()

@@ -539,28 +539,12 @@ class MusicService : MediaSessionService() {
                         currentQueue = songs
                         withContext(Dispatchers.Main) {
                             val safeIndex = index.coerceIn(0, mediaItems.size - 1)
-                            val currentIdx = player.currentMediaItemIndex
                             val currentItem = player.currentMediaItem
                             val targetItem = mediaItems[safeIndex]
 
-                            if (currentItem != null &&
-                                currentIdx in 0 until player.mediaItemCount &&
-                                currentItem.mediaId == targetItem.mediaId) {
-                                // 🛡️ Currently playing track is unchanged: update playlist around it without stopping audio
-                                if (player.mediaItemCount > currentIdx + 1) {
-                                    player.removeMediaItems(currentIdx + 1, player.mediaItemCount)
-                                }
-                                if (currentIdx > 0) {
-                                    player.removeMediaItems(0, currentIdx)
-                                }
-                                if (safeIndex > 0) {
-                                    val itemsBefore = mediaItems.subList(0, safeIndex)
-                                    player.addMediaItems(0, itemsBefore)
-                                }
-                                if (safeIndex + 1 < mediaItems.size) {
-                                    val itemsAfter = mediaItems.subList(safeIndex + 1, mediaItems.size)
-                                    player.addMediaItems(player.mediaItemCount, itemsAfter)
-                                }
+                            if (currentItem != null && currentItem.mediaId == targetItem.mediaId) {
+                                // 🛡️ Currently playing track is unchanged: update playlist timeline seamlessly
+                                player.setMediaItems(mediaItems, safeIndex, position)
                             } else {
                                 player.setMediaItems(mediaItems, safeIndex, position)
                                 if (isPlaying) player.play()
