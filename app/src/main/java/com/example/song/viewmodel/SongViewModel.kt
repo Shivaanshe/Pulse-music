@@ -603,6 +603,13 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         }, ContextCompat.getMainExecutor(appContext))
     }
 
+    fun getOrInitMediaController(): MediaController? {
+        if (mediaController == null || mediaController?.isConnected == false) {
+            initMediaController(getApplication())
+        }
+        return mediaController
+    }
+
     private fun startProgressUpdate() {
         viewModelScope.launch {
             while (isActive) {
@@ -629,7 +636,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun seekTo(position: Long) {
-        mediaController?.seekTo(position)
+        getOrInitMediaController()?.seekTo(position)
         isUserSeeking = false
     }
 
@@ -886,7 +893,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         val targetQueue = _currentQueue.value
         val ids = targetQueue.mapTo(ArrayList()) { it.id }
 
-        mediaController?.let { controller ->
+        getOrInitMediaController()?.let { controller ->
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
                 putInt("index", 0)
@@ -953,7 +960,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         val targetQueue = _currentQueue.value
         val ids = targetQueue.mapTo(ArrayList()) { it.id }
 
-        mediaController?.let { controller ->
+        getOrInitMediaController()?.let { controller ->
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
                 putInt("index", 0)
@@ -1142,7 +1149,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         val index = queue.indexOfFirst { it.id == currentPlayingId }.coerceAtLeast(0)
         val ids = queue.mapTo(ArrayList()) { it.id }
 
-        mediaController?.let { controller ->
+        getOrInitMediaController()?.let { controller ->
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
                 putInt("index", index)
@@ -1153,7 +1160,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun skipToNext() {
-        mediaController?.let { controller ->
+        getOrInitMediaController()?.let { controller ->
             if (controller.isCommandAvailable(Player.COMMAND_SEEK_TO_NEXT)) {
                 controller.seekToNext()
             } else {
@@ -1165,7 +1172,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun skipToPrevious() {
-        mediaController?.let { controller ->
+        getOrInitMediaController()?.let { controller ->
             if (controller.isCommandAvailable(Player.COMMAND_SEEK_TO_PREVIOUS)) {
                 controller.seekToPrevious()
             } else {
@@ -1177,7 +1184,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleRepeatMode() {
-        mediaController?.let {
+        getOrInitMediaController()?.let {
             val nextMode = when (it.repeatMode) {
                 Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
                 Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
@@ -1508,9 +1515,10 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePlayPause() {
-        Log.d("SongViewModel", "togglePlayPause triggered. isPlaying: ${mediaController?.isPlaying}, state: ${mediaController?.playbackState}")
+        val controller = getOrInitMediaController()
+        Log.d("SongViewModel", "togglePlayPause triggered. isPlaying: ${controller?.isPlaying}, state: ${controller?.playbackState}")
         _playbackError.value = null
-        mediaController?.let {
+        controller?.let {
             when {
                 it.isPlaying -> it.pause()
                 it.playbackState == Player.STATE_IDLE -> {

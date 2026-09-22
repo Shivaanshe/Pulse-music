@@ -212,8 +212,8 @@ class MusicService : MediaSessionService() {
                 idleJob?.cancel()
                 if (!isPlaying) {
                     idleJob = serviceScope.launch {
-                        delay(30 * 1000) // 30 seconds
-                        if (!player.isPlaying) {
+                        delay(30 * 1000L) // 30 seconds idle timeout when paused
+                        if (!player.isPlaying && player.playbackState != Player.STATE_BUFFERING) {
                             PulseLogger.log("Idle for 30 seconds. Stopping service.")
                             stopSelf()
                         }
@@ -418,6 +418,7 @@ class MusicService : MediaSessionService() {
         }
 
         override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo, customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
+            idleJob?.cancel()
             if (customCommand.customAction == "PLAY_QUEUE") {
                 val index = args.getInt("index", 0)
                 val ids = args.getIntegerArrayList("ids") ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
