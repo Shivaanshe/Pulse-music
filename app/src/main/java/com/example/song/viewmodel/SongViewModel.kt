@@ -107,6 +107,12 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     private val _parentQueue = MutableStateFlow<List<QueueItem>>(emptyList())
     val parentQueue: StateFlow<List<QueueItem>> = _parentQueue.asStateFlow()
 
+    private val _historyStack = MutableStateFlow<List<Song>>(emptyList())
+    val historyStack: StateFlow<List<Song>> = _historyStack.asStateFlow()
+
+    private val _sourcePlaylist = MutableStateFlow<List<Song>>(emptyList())
+    val sourcePlaylist: StateFlow<List<Song>> = _sourcePlaylist.asStateFlow()
+
     private val _unshuffledQueue = MutableStateFlow<List<Song>>(emptyList())
     val unshuffledQueue: StateFlow<List<Song>> = _unshuffledQueue.asStateFlow()
 
@@ -838,6 +844,20 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun pruneActiveSongFromQueue(activeSongId: Int) {
+        // 🛡️ Edge Case 1 Guard: If Repeat One is active and the same song repeated, do not prune queue
+        if (_repeatMode.value == Player.REPEAT_MODE_ONE && _currentPlayingSong.value?.id == activeSongId) {
+            return
+        }
+
+        val prevSong = _currentPlayingSong.value
+        if (prevSong != null && prevSong.id != activeSongId) {
+            val history = _historyStack.value.toMutableList()
+            if (history.isEmpty() || history.last().id != prevSong.id) {
+                history.add(prevSong)
+                _historyStack.value = history
+            }
+        }
+
         val manual = _manualQueue.value
         val parent = _parentQueue.value
 
@@ -845,10 +865,11 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             _manualQueue.value = manual.drop(1)
         } else if (manual.any { it.song.id == activeSongId }) {
             _manualQueue.value = manual.filter { it.song.id != activeSongId }
-        } else if (parent.isNotEmpty() && parent.first().song.id == activeSongId) {
-            _parentQueue.value = parent.drop(1)
-        } else if (parent.any { it.song.id == activeSongId }) {
-            _parentQueue.value = parent.filter { it.song.id != activeSongId }
+        } else if (parent.isNotEmpty()) {
+            val parentMatchIndex = parent.indexOfFirst { it.song.id == activeSongId }
+            if (parentMatchIndex != -1) {
+                _parentQueue.value = parent.drop(parentMatchIndex + 1)
+            }
         }
 
         recomputeCombinedQueue()
@@ -859,7 +880,31 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         val activeItem = activeSong?.let { QueueItem(queueId = "active_playing", song = it) }
 
         val manualItems = _manualQueue.value
-        val parentItems = _parentQueue.value
+        var parentItems = _parentQueue.value
+
+        // 🛡️ Fallback Context Protection: If parentQueue is empty but we have a sourcePlaylist, recover upcoming tracks
+        if (parentItems.isEmpty() && _sourcePlaylist.value.isNotEmpty() && activeSong != null) {
+            val source = _sourcePlaylist.value
+            val matchIdx = source.indexOfFirst { it.id == activeSong.id }
+            if (matchIdx != -1) {
+                var recoveredSongs = if (matchIdx + 1 < source.size) {
+                    source.subList(matchIdx + 1, source.size)
+                } else if (_repeatMode.value == Player.REPEAT_MODE_ALL && source.size > 1) {
+                    // 🛡️ Edge Case Guard: Wrap around to index 0 when Repeat All is enabled and list reaches the end
+                    source.filter { it.id != activeSong.id }
+                } else {
+                    emptyList()
+                }
+
+                if (recoveredSongs.isNotEmpty()) {
+                    if (_isShuffleEnabled.value && recoveredSongs.size > 1) {
+                        recoveredSongs = recoveredSongs.shuffled()
+                    }
+                    parentItems = recoveredSongs.map { QueueItem(song = it) }
+                    _parentQueue.value = parentItems
+                }
+            }
+        }
 
         val combinedItems = listOfNotNull(activeItem) + manualItems + parentItems
         val combinedSongs = combinedItems.map { it.song }
@@ -879,9 +924,16 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         
         contextTitle?.let { _queueContextTitle.value = it } ?: run { _queueContextTitle.value = "Playing \"${song.title}\"" }
 
+        _sourcePlaylist.value = queue
         _manualQueue.value = emptyList()
 
         val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+
+        // 1. Preceding songs go to history stack
+        val pastSongs = if (index > 0) queue.subList(0, index) else emptyList()
+        _historyStack.value = pastSongs
+
+        // 2. Remaining upcoming songs go to parent queue
         val remainingSongs = if (index + 1 < queue.size) queue.subList(index + 1, queue.size) else emptyList()
         _parentQueue.value = remainingSongs.map { QueueItem(song = it, isUserQueued = false) }
 
@@ -938,6 +990,7 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 artist = it.artist ?: "Unknown Artist",
                 audioUri = it.youtubeUrl,
                 imageUrl = it.thumbnailUrl,
+                isFavorite = it.isFavorite,
                 duration = it.duration
             )
         }
@@ -946,9 +999,16 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
 
         val targetSong = mappedQueue.find { it.id == (1_000_000 + item.id) } ?: mappedQueue.firstOrNull() ?: return
 
+        _sourcePlaylist.value = mappedQueue
         _manualQueue.value = emptyList()
 
         val index = mappedQueue.indexOfFirst { it.id == targetSong.id }.coerceAtLeast(0)
+
+        // 1. Preceding songs go to history stack
+        val pastSongs = if (index > 0) mappedQueue.subList(0, index) else emptyList()
+        _historyStack.value = pastSongs
+
+        // 2. Remaining upcoming songs go to parent queue
         val remainingSongs = if (index + 1 < mappedQueue.size) mappedQueue.subList(index + 1, mappedQueue.size) else emptyList()
         _parentQueue.value = remainingSongs.map { QueueItem(song = it, isUserQueued = false) }
 
@@ -1097,6 +1157,27 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateServiceQueue() {
+        val activeSong = _currentPlayingSong.value
+        val historySongs = _historyStack.value
+        val queue = _currentQueue.value
+        if (queue.isEmpty() && historySongs.isEmpty()) return
+
+        val fullTimeline = historySongs + queue
+        val currentPlayingId = activeSong?.id
+        val index = fullTimeline.indexOfFirst { it.id == currentPlayingId }.coerceAtLeast(historySongs.size)
+        val ids = fullTimeline.mapTo(ArrayList()) { it.id }
+
+        getOrInitMediaController()?.let { controller ->
+            val args = Bundle().apply {
+                putIntegerArrayList("ids", ids)
+                putInt("index", index)
+                putParcelableArrayList("songs", ArrayList(fullTimeline))
+            }
+            controller.sendCustomCommand(SessionCommand("UPDATE_QUEUE", Bundle.EMPTY), args)
+        }
+    }
+
     fun clearManualQueue() {
         _manualQueue.value = emptyList()
         recomputeCombinedQueue()
@@ -1105,6 +1186,8 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     fun clearQueue() {
         _manualQueue.value = emptyList()
         _parentQueue.value = emptyList()
+        _historyStack.value = emptyList()
+        _sourcePlaylist.value = emptyList()
         recomputeCombinedQueue()
     }
 
@@ -1141,24 +1224,6 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateServiceQueue() {
-        val queue = _currentQueue.value
-        if (queue.isEmpty()) return
-
-        val currentPlayingId = _currentPlayingSong.value?.id
-        val index = queue.indexOfFirst { it.id == currentPlayingId }.coerceAtLeast(0)
-        val ids = queue.mapTo(ArrayList()) { it.id }
-
-        getOrInitMediaController()?.let { controller ->
-            val args = Bundle().apply {
-                putIntegerArrayList("ids", ids)
-                putInt("index", index)
-                putParcelableArrayList("songs", ArrayList(queue))
-            }
-            controller.sendCustomCommand(SessionCommand("UPDATE_QUEUE", Bundle.EMPTY), args)
-        }
-    }
-
     fun skipToNext() {
         getOrInitMediaController()?.let { controller ->
             if (controller.isCommandAvailable(Player.COMMAND_SEEK_TO_NEXT)) {
@@ -1172,14 +1237,63 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun skipToPrevious() {
-        getOrInitMediaController()?.let { controller ->
-            if (controller.isCommandAvailable(Player.COMMAND_SEEK_TO_PREVIOUS)) {
-                controller.seekToPrevious()
-            } else {
-                Log.d("PulseDebug", "seekToPrevious rejected. Triggering skip-override.")
-                PulseLogger.log("Manual skip: Previous")
-                controller.sendCustomCommand(SessionCommand("SKIP_TO_PREVIOUS", Bundle.EMPTY), Bundle.EMPTY)
+        val pos = _currentPosition.value
+        val history = _historyStack.value
+        val source = _sourcePlaylist.value
+        val currentSong = _currentPlayingSong.value
+
+        // 1. If currently playing song is beyond 3 seconds (3000ms), seek to start (0ms)
+        if (pos > 3000L) {
+            _currentPosition.value = 0L
+            getOrInitMediaController()?.seekTo(0)
+            PulseLogger.log("Restarted current track at 00:00")
+            return
+        }
+
+        // 2. Position is <= 3000L: Attempt to find the previous song
+        // Priority A: Take from _historyStack
+        var prevSong: Song? = history.lastOrNull()
+
+        // Priority B: If historyStack is empty, look in _sourcePlaylist for preceding song
+        if (prevSong == null && source.isNotEmpty() && currentSong != null) {
+            val matchIdx = source.indexOfFirst { it.id == currentSong.id }
+            if (matchIdx > 0) {
+                prevSong = source[matchIdx - 1]
             }
+        }
+
+        if (prevSong != null) {
+            // Update history stack if popped from history
+            if (history.isNotEmpty() && prevSong == history.last()) {
+                _historyStack.value = history.dropLast(1)
+            }
+
+            // Current song goes back to top of manual queue
+            if (currentSong != null) {
+                _manualQueue.value = listOf(QueueItem(song = currentSong, isUserQueued = true)) + _manualQueue.value
+            }
+
+            _currentPlayingSong.value = prevSong
+            _currentPosition.value = 0L
+            recomputeCombinedQueue()
+            PulseLogger.log("Navigated back to historical song: ${prevSong.title}")
+
+            val targetQueue = _currentQueue.value
+            val ids = targetQueue.mapTo(ArrayList()) { it.id }
+
+            getOrInitMediaController()?.let { controller ->
+                val args = Bundle().apply {
+                    putIntegerArrayList("ids", ids)
+                    putInt("index", 0)
+                    putBoolean("isStreaming", prevSong.id >= 1_000_000)
+                    putParcelableArrayList("songs", ArrayList(targetQueue))
+                }
+                controller.sendCustomCommand(SessionCommand("PLAY_QUEUE", Bundle.EMPTY), args)
+            }
+        } else {
+            // No previous song available: restart current track at 0ms
+            _currentPosition.value = 0L
+            getOrInitMediaController()?.seekTo(0)
         }
     }
 

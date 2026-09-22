@@ -367,6 +367,35 @@ class MusicService : MediaSessionService() {
                 .build()
         }
 
+        @Suppress("DEPRECATION")
+        override fun onPlayerCommandRequest(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            playerCommand: Int
+        ): Int {
+            if (playerCommand == Player.COMMAND_SEEK_TO_PREVIOUS) {
+                serviceScope.launch(Dispatchers.Main) {
+                    if (player.currentPosition > 3000) {
+                        player.seekTo(0)
+                    } else if (player.hasPreviousMediaItem()) {
+                        player.seekToPreviousMediaItem()
+                    } else {
+                        player.seekTo(0)
+                    }
+                }
+                return SessionResult.RESULT_SUCCESS
+            }
+            if (playerCommand == Player.COMMAND_SEEK_TO_NEXT) {
+                serviceScope.launch(Dispatchers.Main) {
+                    if (player.hasNextMediaItem()) {
+                        player.seekToNextMediaItem()
+                    }
+                }
+                return SessionResult.RESULT_SUCCESS
+            }
+            return super.onPlayerCommandRequest(session, controller, playerCommand)
+        }
+
         override fun onPlaybackResumption(session: MediaSession, controller: MediaSession.ControllerInfo): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
             val savedQueue = prefs.getString(KEY_LAST_QUEUE_IDS, null)
@@ -542,6 +571,29 @@ class MusicService : MediaSessionService() {
                 }
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
+
+            if (customCommand.customAction == "SKIP_TO_PREVIOUS") {
+                serviceScope.launch(Dispatchers.Main) {
+                    if (player.currentPosition > 3000) {
+                        player.seekTo(0)
+                    } else if (player.hasPreviousMediaItem()) {
+                        player.seekToPreviousMediaItem()
+                    } else {
+                        player.seekTo(0)
+                    }
+                }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+
+            if (customCommand.customAction == "SKIP_TO_NEXT") {
+                serviceScope.launch(Dispatchers.Main) {
+                    if (player.hasNextMediaItem()) {
+                        player.seekToNextMediaItem()
+                    }
+                }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
         }
     }
