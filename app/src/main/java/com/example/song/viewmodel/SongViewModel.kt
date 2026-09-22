@@ -911,8 +911,16 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 itemsToReinsert.add(currentSong)
             }
 
-            // Push skipped songs back into parentQueue
-            _parentQueue.value = itemsToReinsert.map { QueueItem(song = it) } + parent
+            // Restore user-queued items back into manualQueue
+            val manualReinsert = itemsToReinsert.filter { song ->
+                _sourcePlaylist.value.none { it.id == song.id }
+            }
+            val parentReinsert = itemsToReinsert.filter { song -> song !in manualReinsert }
+
+            if (manualReinsert.isNotEmpty()) {
+                _manualQueue.value = manualReinsert.map { QueueItem(song = it, isUserQueued = true) } + manual
+            }
+            _parentQueue.value = parentReinsert.map { QueueItem(song = it) } + parent
             _historyStack.value = history.subList(0, historyMatchIdx)
         } else {
             // 🔜 FORWARD TRANSITION: Record the old song to history
@@ -1160,6 +1168,8 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             _manualQueue.value = currentManual
         }
 
+        // 🛡️ Reset lastSentTimelineIds to force updateServiceQueue to sync timeline with ExoPlayer
+        lastSentTimelineIds = emptyList()
         recomputeCombinedQueue()
 
         val text = if (songs.size == 1) {
