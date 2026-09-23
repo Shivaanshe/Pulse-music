@@ -7,14 +7,20 @@
   <p><b>A resilient, high-performance Android music streaming engine & player built on modern Android standards.</b></p>
 
   <p>
-    <a href="https://github.com/Shivaanshe/PulsePlayer-Android/releases/latest">
-      <img src="https://img.shields.io/github/v/release/Shivaanshe/PulsePlayer-Android?style=for-the-badge&color=4CAF50&label=Download%20APK" alt="Latest Release" />
+    <a href="https://github.com/Shivaanshe/PulsePlayer-Android/releases/latest/download/app-release.apk">
+      <img src="https://img.shields.io/github/v/release/Shivaanshe/PulsePlayer-Android?style=for-the-badge&color=4CAF50&label=Download%20APK" alt="Download Latest APK" />
     </a>
     <a href="https://github.com/Shivaanshe/PulsePlayer-Android/stargazers">
       <img src="https://img.shields.io/github/stars/Shivaanshe/PulsePlayer-Android?style=for-the-badge&color=00E676" alt="Stars" />
     </a>
     <a href="https://github.com/Shivaanshe/PulsePlayer-Android/network/members">
       <img src="https://img.shields.io/github/forks/Shivaanshe/PulsePlayer-Android?style=for-the-badge&color=2196F3" alt="Forks" />
+    </a>
+  </p>
+
+  <p>
+    <a href="https://github.com/Shivaanshe/PulsePlayer-Android/releases/latest/download/app-release.apk">
+      <img src="https://img.shields.io/badge/📥_Direct_APK_Download-Click_Here-4CAF50?style=for-the-badge&logo=android&logoColor=white" alt="Direct APK Download" />
     </a>
   </p>
 
@@ -83,7 +89,7 @@ Pulse Music delivers a unified, high-fidelity music experience combining cloud s
 
 ### 🚀 Download Latest Build
 Get the latest stable APK directly from GitHub Releases:
-👉 **[Download Pulse Music APK (Latest Release)](https://github.com/Shivaanshe/PulsePlayer-Android/releases/latest)**
+👉 **[Download Pulse Music APK (`app-release.apk`)](https://github.com/Shivaanshe/PulsePlayer-Android/releases/latest/download/app-release.apk)**
 
 ### 🔄 Connected In-App OTA Updates
 Pulse Music includes a built-in **Over-The-Air (OTA) Update System** (`OtaUpdateManager`) connected directly to the `Shivaanshe/PulsePlayer-Android` GitHub Releases repository:
