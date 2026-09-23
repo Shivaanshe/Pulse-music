@@ -1,66 +1,61 @@
 # Pulse Music 🎵
 
-Pulse is a high-performance, resilient Android music streaming engine built on modern Android standards (Media3, Jetpack Compose). It features a **"Final Form" JIT (Just-In-Time) resolution architecture** that provides a seamless, premium listening experience across YouTube and local storage.
+![Pulse Music Logo](./app/src/main/ic_launcher-playstore.png)
 
+**A resilient, high-performance Android music streaming engine & player built on modern Android standards.**
 
-
-## 🚀 Architectural Highlights
-
-### 1. JIT Resolution Engine (`ResolvingDataSource`)
-Pulse uses a professional-grade **Just-In-Time resolution pipeline**. Instead of pre-resolving entire playlists (which is slow and wastes data), Pulse natively "pauses" the network request at the last millisecond to fetch the real stream URL and authenticated headers.
-- **Zero-Gap Playback:** 100% native Media3 queue transitions.
-- **Protocol Agnostic:** Automatically handles `http`, `https`, and `file://` protocols for seamless hybrid playback (Streaming + Downloads).
-
-### 2. "Burner Thread" Resilience
-To handle native JNI deadlocks (common in network extraction), Pulse implements a **Burner Thread Architecture**:
-- **Detached Watchdog:** Extractions run in supervised "burner" coroutines.
-- **Hard-Kill Protocol:** If a process hangs for more than 35 seconds, a parallel watcher physically terminates the native process to release the Mutex and free the engine.
-- **Circuit Breaker:** Automatically trips after 10 consecutive failures to protect device resources and data.
-
-### 3. Zero-Lag Metadata Injection
-Pulse provides a premium system-level experience without performance hits:
-- **Raw Byte Artwork:** Album art is fetched in parallel with the audio and injected as raw bytes directly into the `MediaMetadata`.
-- **Dynamic Theming:** The notification tray and lock screen change colors instantly to match the album art with 0ms network lag at playback start.
-
-### 4. High-Resolution Debugging
-Built-in **Pulse Debugger** provides real-time telemetry:
-- **Live Cache Monitor:** Track LRU (Least Recently Used) eviction and cache hits.
-- **JIT Timeline:** High-fidelity logging of the resolution handshake.
-- **Performance Toggles:** Hardware-friendly controls like the "Background Orbs" toggle for low-end devices.
-
-## 🛠️ Tech Stack
-- **UI:** Jetpack Compose (Material 3)
-- **Engine:** Media3 (ExoPlayer) / Session
-- **Networking:** OkHttp3 / ResolvingDataSource
-- **Extraction:** youtubedl-android (yt-dlp) / FFmpeg
-- **Image Loading:** Coil
-- **Concurrency:** Kotlin Coroutines & Flows (StateFlow/SharedFlow)
-
-## 📦 Getting Started
-1. Clone the repository.
-2. Ensure you have the latest Android Studio installed.
-3. Pulse automatically initializes and updates the `yt-dlp` binary on the first launch.
-4. Grant the required permissions (Media/Storage) to begin scanning your library.
-
-## 🛡️ Security & Stability
-- **Triple-Lock Handshake:** Dynamic injection of User-Agent, Referer, and Cookies to prevent `403 Forbidden` errors.
-- **Priority Queueing:** Active tracks always jump to the front of the extraction line, while background pre-fetches wait for a 1.5s priority delay.
+[![Latest Release](https://img.shields.io/github/v/release/Shivaanshe/PulsePlayer-Android?style=for-the-badge&color=4CAF50&label=Download%20APK)](https://github.com/Shivaanshe/PulsePlayer-Android/releases/latest)
+[![Stars](https://img.shields.io/github/stars/Shivaanshe/PulsePlayer-Android?style=for-the-badge&color=00E676)](https://github.com/Shivaanshe/PulsePlayer-Android/stargazers)
+[![Forks](https://img.shields.io/github/forks/Shivaanshe/PulsePlayer-Android?style=for-the-badge&color=2196F3)](https://github.com/Shivaanshe/PulsePlayer-Android/network/members)
 
 ---
-*Developed with a focus on stability, performance, and a premium Android experience.*
 
-## 📖 How to Use
+## 🌟 What Pulse Serves
 
-### Adding & Managing Music
-- **Discover Page (Smart Cloud Streaming):** When you add or favorite a song from Discover, Pulse saves only the lightweight track link and metadata to preserve your device storage. When you press play, the Just-In-Time (JIT) Resolution Engine dynamically fetches the highest quality audio stream and temporarily buffers it in a rolling cache. Once playback finishes, temporary streaming cache is automatically recycled to keep your phone running light and fast.
-- **My Library (Local Storage & Downloads):** This is your permanent offline hub. Tracks you explicitly choose to download are saved directly to your phone's local storage for zero-data offline playback. Pulse automatically indexes your device storage, seamlessly merging downloaded music and local audio files into one unified collection.
+Pulse Music delivers a unified, high-fidelity music experience combining cloud streaming, local storage playback, and a modern glassmorphic interface.
 
-### Key Features
-- **Glassmorphic Aesthetic:** Translucent, glass-textured interface featuring dynamic scroll-reactive color shifting and fluid, tactile drag-and-drop playlist reordering.
-- **Adaptive Landscape Mode:** Automatically reorganizes on screen rotation into a widescreen two-pane layout—anchoring artwork and playback controls on the left with a full scrollable tracklist on the right via a slim vertical Navigation Rail.
-- **Zero-Bloat JIT Streaming:** On-demand stream resolution eliminates storage buildup by avoiding unnecessary full-file downloads for cloud tracks.
-- **Pulse Debugger:** Built-in real-time telemetry and system diagnostics to monitor network bandwidth, active threads, and media cache allocation.
+### 📱 Key Features & Capabilities
 
-### Playback & Performance
-- **Initial Stream Handshake:** Cloud-resolved songs take roughly 2 to 4 seconds to initiate. This brief window allows the JIT engine to negotiate the source handshake, extract audio streams, and pre-fill the playback buffer to guarantee skip-free listening.
-- **Instant Local Skips:** Songs stored locally in My Library bypass the network resolution stage entirely, playing instantly with zero latency.
+- **Smart Discover & Cloud Streaming:** Instant YouTube & Spotify link extraction. Paste any track or playlist link to resolve and stream music on-demand without storage bloat.
+- **Immersive Glassmorphic Playlist Experience:** Dedicated hero artwork headers with soft ambient glowing backdrops, instant $O(1)$ track count and total runtime calculation, and intuitive "Play All", "Shuffle", and "Add Tracks" controls.
+- **My Library & Offline Media Hub:** Native Android storage indexer that merges downloaded tracks and local device audio files into one cohesive, zero-data offline catalog.
+- **Glassmorphic Aesthetic & Modern UX:** Translucent smoked-glass containers, signature Pulse green accents (`#4CAF50`), Compose spring physics, interactive drag-and-drop playlist reordering, and a two-pane widescreen landscape layout with Navigation Rail.
+- **Pulse Debugger & System Telemetry:** Real-time diagnostics monitor bandwidth, active extraction threads, LRU cache allocation, and background visualizer toggles for hardware efficiency.
+
+---
+
+## ⚡ Architecture Highlights
+
+- **Just-In-Time (JIT) Resolution Pipeline (`ResolvingDataSource`):** Natively pauses network requests at the last millisecond to negotiate the source stream and authenticated headers, providing seamless zero-gap playback.
+- **"Burner Thread" Watchdog Resilience:** Supervised coroutine extraction pipeline with automatic detached watchers and hard-kill protocols to prevent JNI/native extraction deadlocks.
+- **Zero-Lag Metadata & Dynamic Theming:** Raw byte album art injection with instant lock screen and notification tint matching.
+
+---
+
+## 🛠️ Tech Stack
+
+- **UI Framework:** Jetpack Compose (Material 3)
+- **Audio Engine:** Media3 (ExoPlayer) / MediaSession
+- **Database:** Room Persistence Library
+- **Networking:** OkHttp3 / Retrofit2
+- **Stream Extraction:** `youtubedl-android` (`yt-dlp`) / FFmpeg
+- **Image Pipeline:** Coil
+- **Concurrency:** Kotlin Coroutines & StateFlow / Flow Pipelines
+
+---
+
+## 📥 Download & Automated Updates
+
+### 🚀 Download Latest Build
+Get the latest stable APK directly from GitHub Releases:
+👉 **[Download Pulse Music APK (Latest Release)](https://github.com/Shivaanshe/PulsePlayer-Android/releases/latest)**
+
+### 🔄 Connected In-App OTA Updates
+Pulse Music includes a built-in **Over-The-Air (OTA) Update System** (`OtaUpdateManager`) connected directly to the `Shivaanshe/PulsePlayer-Android` GitHub Releases repository:
+- **Automated Update Checks:** Periodically checks GitHub Releases for new updates and version tags.
+- **In-App Changelog & Progress:** Displays update notifications, version comparison, and release notes directly in the app.
+- **One-Click Installation:** Automatically downloads the latest APK via Android DownloadManager and prompts for seamless in-app installation.
+
+---
+
+*Developed with a focus on stability, performance, and a premium Android music experience.*

@@ -55,7 +55,7 @@ class OtaUpdateManager(
     companion object {
         private const val TAG = "OtaUpdateManager"
         const val DEFAULT_OWNER = "Shivaanshe"
-        const val DEFAULT_REPO = "song"
+        const val DEFAULT_REPO = "PulsePlayer-Android"
         const val AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
     }
 
