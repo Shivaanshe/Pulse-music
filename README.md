@@ -1,6 +1,6 @@
 # Pulse Music 🎵
 
-![Pulse Music Logo](./app/src/main/ic_launcher-playstore.png)
+<img src="app/src/main/ic_launcher-playstore.png" width="120" alt="Pulse Music Logo" />
 
 **A resilient, high-performance Android music streaming engine & player built on modern Android standards.**
 
