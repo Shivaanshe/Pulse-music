@@ -177,7 +177,7 @@ object YoutubeStreamHandler {
         for (clients in clientConfigs) {
             try {
                 val request = YoutubeDLRequest(actualUrl).apply {
-                    addOption("-f", "ba/ba*")
+                    addOption("-f", "bestaudio/ba/b")
                     addOption("--dump-json")
                     addOption("--extractor-args", "youtube:player_client=$clients;web:visitor_data=random")
                     addOption("--socket-timeout", "10")

@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
@@ -20,6 +21,9 @@ import androidx.media3.datasource.*
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -138,10 +142,26 @@ class MusicService : MediaSessionService() {
             .setUsage(androidx.media3.common.C.USAGE_MEDIA)
             .build()
 
-        player = ExoPlayer.Builder(this)
+        val renderersFactory = RenderersFactory { handler, _, audioListener, _, _ ->
+            arrayOf(
+                MediaCodecAudioRenderer(
+                    this,
+                    MediaCodecSelector.DEFAULT,
+                    handler,
+                    audioListener
+                )
+            )
+        }
+
+        player = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(dataSourceFactory)
             .setAudioAttributes(audioAttributes, true) // true handles audio focus automatically
             .setHandleAudioBecomingNoisy(true) // handle Bluetooth/Headphone disconnect
+            .build()
+
+        // 🛡️ Disable Video tracks explicitly to prevent hardware video decoder allocation
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
             .build()
 
         // 🛡️ Guarantee 1.0x normal playback speed to prevent sample rate/fast-forward bugs

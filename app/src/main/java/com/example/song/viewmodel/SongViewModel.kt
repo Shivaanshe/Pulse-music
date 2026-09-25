@@ -337,11 +337,10 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 val errorMsg = e.localizedMessage ?: ""
                 PulseLogger.log("Extraction error: $errorMsg", isError = true)
                 val isOffline = !isConnectedToInternet() ||
+                               e is UnknownHostException ||
                                errorMsg.contains("Unable to resolve host", ignoreCase = true) == true ||
                                errorMsg.contains("No address associated", ignoreCase = true) == true ||
-                               e is UnknownHostException ||
-                               e is SocketTimeoutException ||
-                               e is IOException
+                               errorMsg.contains("Network is unreachable", ignoreCase = true) == true
 
                 _extractionError.value = if (isOffline) {
                     "App is offline. Please check your Internet connection."
@@ -615,12 +614,10 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                             PulseLogger.log("Engine error: ${error.localizedMessage}", isError = true)
                             
                             val isOffline = !isConnectedToInternet() || 
+                                           error.cause is UnknownHostException ||
                                            error.message?.contains("Unable to resolve host", ignoreCase = true) == true ||
                                            error.message?.contains("No address associated", ignoreCase = true) == true ||
-                                           error.message?.contains("Network is unreachable", ignoreCase = true) == true ||
-                                           error.cause is UnknownHostException ||
-                                           error.cause is SocketTimeoutException ||
-                                           error.cause is IOException
+                                           error.message?.contains("Network is unreachable", ignoreCase = true) == true
 
                             _playbackError.value = if (isOffline) {
                                 "App is offline. Please check your Internet connection."
@@ -1413,10 +1410,10 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 e.printStackTrace()
                 val isOffline = !isConnectedToInternet() ||
-                               (e.localizedMessage?.contains("Unable to resolve host", ignoreCase = true) == true) ||
                                e is UnknownHostException ||
-                               e is SocketTimeoutException ||
-                               e is IOException
+                               (e.localizedMessage?.contains("Unable to resolve host", ignoreCase = true) == true) ||
+                               (e.localizedMessage?.contains("No address associated", ignoreCase = true) == true) ||
+                               (e.localizedMessage?.contains("Network is unreachable", ignoreCase = true) == true)
 
                 val msg = if (isOffline) "App is offline. Please check your Internet connection." else "Invalid link"
                 _downloadState.value = DownloadState.Error(msg)
@@ -1542,10 +1539,10 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             PulseLogger.log("Queued download failed: ${e.localizedMessage}", isError = true)
             val isOffline = !isConnectedToInternet() ||
-                           (e.localizedMessage?.contains("Unable to resolve host", ignoreCase = true) == true) ||
                            e is UnknownHostException ||
-                           e is SocketTimeoutException ||
-                           e is IOException
+                           (e.localizedMessage?.contains("Unable to resolve host", ignoreCase = true) == true) ||
+                           (e.localizedMessage?.contains("No address associated", ignoreCase = true) == true) ||
+                           (e.localizedMessage?.contains("Network is unreachable", ignoreCase = true) == true)
 
             val msg = if (isOffline) "App is offline. Please check your Internet connection." else "Download failed: ${e.localizedMessage ?: "Unknown error"}"
             _downloadState.value = DownloadState.Error(msg)
