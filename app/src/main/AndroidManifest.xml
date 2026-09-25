@@ -15,7 +15,8 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Pulse"
-        android:extractNativeLibs="true">
+        android:extractNativeLibs="true"
+        android:enableOnBackInvokedCallback="true">
 
         <activity
             android:name=".MainActivity"
