@@ -28,6 +28,7 @@ import com.example.song.data.model.Song
 import com.example.song.data.model.StreamingItem
 import com.example.song.data.repository.SongRepository
 import com.example.song.service.MusicService
+import com.example.song.util.CrashTracker
 import com.example.song.util.PulseLogger
 import com.example.song.util.SpotifyResolver
 import com.example.song.util.YoutubeStreamHandler
@@ -336,6 +337,11 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 tickerJob.cancel()
                 val errorMsg = e.localizedMessage ?: ""
                 PulseLogger.log("Extraction error: $errorMsg", isError = true)
+                CrashTracker.recordException(
+                    throwable = e,
+                    breadcrumb = "YouTube extraction error",
+                    customKeys = mapOf("extraction_url" to url)
+                )
                 val isOffline = !isConnectedToInternet() ||
                                e is UnknownHostException ||
                                errorMsg.contains("Unable to resolve host", ignoreCase = true) == true ||
@@ -612,6 +618,15 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
 
                             Log.e("SongViewModel", "Playback error: ${error.message}", error)
                             PulseLogger.log("Engine error: ${error.localizedMessage}", isError = true)
+                            CrashTracker.recordException(
+                                throwable = error,
+                                breadcrumb = "ExoPlayer playback error",
+                                customKeys = mapOf(
+                                    "media_title" to (currentItem?.mediaMetadata?.title?.toString() ?: "Unknown"),
+                                    "media_uri" to uriString,
+                                    "error_code" to error.errorCodeName
+                                )
+                            )
                             
                             val isOffline = !isConnectedToInternet() || 
                                            error.cause is UnknownHostException ||
@@ -648,6 +663,10 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 Log.e("SongViewModel", "Failed to initialize MediaController asynchronously", e)
+                CrashTracker.recordException(
+                    throwable = e,
+                    breadcrumb = "Failed to initialize MediaController asynchronously"
+                )
             }
         }, ContextCompat.getMainExecutor(appContext))
     }
@@ -1538,6 +1557,14 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             _downloadState.value = DownloadState.Idle
         } else {
             PulseLogger.log("Queued download failed: ${e.localizedMessage}", isError = true)
+            CrashTracker.recordException(
+                throwable = e,
+                breadcrumb = "Queued download failed",
+                customKeys = mapOf(
+                    "download_url" to request.url,
+                    "override_title" to (request.overrideTitle ?: "none")
+                )
+            )
             val isOffline = !isConnectedToInternet() ||
                            e is UnknownHostException ||
                            (e.localizedMessage?.contains("Unable to resolve host", ignoreCase = true) == true) ||

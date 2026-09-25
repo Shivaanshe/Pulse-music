@@ -25,6 +25,9 @@ object PulseLogger {
         if (isError) Log.e("PulseDebug", message)
         else Log.d("PulseDebug", message)
 
+        // Forward breadcrumbs to Firebase Crashlytics
+        CrashTracker.log(logEntry)
+
         val currentLogs = _logs.value.toMutableList()
         currentLogs.add(0, logEntry) // Add to top for real-time feed
         
@@ -42,6 +45,9 @@ object PulseLogger {
 
     fun updateTask(task: String?) {
         _currentTask.value = task
-        if (task != null) log("Task: $task")
+        if (task != null) {
+            CrashTracker.setCustomKey("current_task", task)
+            log("Task: $task")
+        }
     }
 }

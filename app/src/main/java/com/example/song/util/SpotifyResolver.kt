@@ -37,6 +37,7 @@ object SpotifyResolver {
             repository.resolveSpotifyMetadata(url)
         } catch (e: Exception) {
             Log.e(TAG, "Spotify API failed", e)
+            CrashTracker.recordException(e, "Spotify API resolution failed", mapOf("spotify_url" to url))
             null
         }
 
@@ -199,6 +200,7 @@ object SpotifyResolver {
             return@withContext fallbackWithMeta(apiMeta)
         } catch (e: Exception) {
             Log.e(TAG, "Embed Scrape Failed", e)
+            CrashTracker.recordException(e, "Spotify embed scrape failed", mapOf("spotify_url" to url))
             return@withContext fallbackWithMeta(apiMeta)
         }
     }

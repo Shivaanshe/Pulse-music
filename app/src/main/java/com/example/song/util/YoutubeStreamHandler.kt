@@ -248,6 +248,7 @@ object YoutubeStreamHandler {
             return@withContext items
         } catch (e: Exception) {
             Log.e(TAG, "Search failed: ${e.localizedMessage}", e)
+            CrashTracker.recordException(e, "YouTube search failed", mapOf("query" to query))
             return@withContext emptyList()
         }
     }

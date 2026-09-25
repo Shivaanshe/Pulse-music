@@ -38,6 +38,7 @@ import com.example.song.MainActivity
 import com.example.song.data.ota.OtaUpdateManager
 import com.example.song.data.ota.UpdateCheckResult
 import com.example.song.ui.theme.SongTheme
+import com.example.song.util.CrashTracker
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -53,6 +54,9 @@ class RecoveryActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val crashLog = intent.getStringExtra(EXTRA_CRASH_LOG) ?: "No stack trace available."
+
+        CrashTracker.setCustomKey("in_recovery_mode", true)
+        CrashTracker.log("Custom error screen (RecoveryActivity) displayed")
 
         setContent {
             SongTheme {
@@ -256,6 +260,7 @@ fun RecoveryScreen(
                                 }
                             }
                         } catch (e: Exception) {
+                            CrashTracker.recordException(e, "Emergency hotfix check failed in RecoveryScreen", mapOf("component" to "RecoveryActivity"))
                             otaStatusMessage = "Error checking hotfix: ${e.message}"
                         } finally {
                             isCheckingOta = false

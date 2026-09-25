@@ -30,6 +30,7 @@ import okhttp3.OkHttpClient
 import java.io.File
 import android.content.Intent
 import android.os.Process
+import com.example.song.util.CrashTracker
 import kotlin.system.exitProcess
 
 class SongApplication : Application(), ImageLoaderFactory {
@@ -171,6 +172,17 @@ class SongApplication : Application(), ImageLoaderFactory {
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
                 Log.e("SongApplication", "Fatal uncaught crash intercepted!", throwable)
+
+                // Report fatal uncaught crash to Firebase Crashlytics before launching RecoveryActivity
+                CrashTracker.recordException(
+                    throwable = throwable,
+                    breadcrumb = "Fatal uncaught crash intercepted on thread '${thread.name}'",
+                    customKeys = mapOf(
+                        "fatal_uncaught_thread" to thread.name,
+                        "handled_by_crash_guard" to true
+                    )
+                )
+
                 val crashLog = throwable.stackTraceToString()
                 val intent = Intent(this, com.example.song.ui.screens.RecoveryActivity::class.java).apply {
                     putExtra("EXTRA_CRASH_LOG", crashLog)

@@ -64,6 +64,7 @@ import com.example.song.data.preferences.TourPreferences
 import com.example.song.ui.spotlight.SpotlightController
 import com.example.song.ui.spotlight.SpotlightOverlay
 import com.example.song.ui.spotlight.TourStep
+import com.example.song.util.CrashTracker
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -169,6 +170,19 @@ fun MainApp(viewModel: SongViewModel, otaViewModel: OtaUpdateViewModel) {
     // Pager State & Coroutine Scope
     val pagerState = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
+
+    // Track active screen and page in Crashlytics
+    val currentRoute = currentDestination?.route ?: "main"
+    LaunchedEffect(currentRoute, pagerState.currentPage) {
+        val pageName = when (pagerState.currentPage) {
+            0 -> "Discover"
+            1 -> "Favorites"
+            2 -> "Library"
+            else -> "Page_${pagerState.currentPage}"
+        }
+        val fullScreenName = if (currentRoute == "main") "Main_$pageName" else currentRoute
+        CrashTracker.trackScreen(fullScreenName)
+    }
 
     // Spotlight Walkthrough State & Preferences
     val tourPreferences = remember { TourPreferences(context) }
