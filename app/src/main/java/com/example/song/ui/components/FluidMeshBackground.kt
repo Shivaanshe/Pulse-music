@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import com.example.song.R
+import com.shivaansh.pulseplayer.R
 
 /**
  * A spec-accurate horizontal panning background.

@@ -11,7 +11,7 @@ import android.os.Environment
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
-import com.example.song.BuildConfig
+import com.shivaansh.pulseplayer.BuildConfig
 import com.example.song.data.api.GitHubAsset
 import com.example.song.data.api.GitHubRelease
 import com.example.song.data.api.GitHubReleaseService

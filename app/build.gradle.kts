@@ -106,7 +106,7 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.10.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-crashlytics")
 
