@@ -33,3 +33,5 @@ trace_processor
 # AI Agent Artifacts & Scratchpads
 .artifacts/
 .kotlin/
+
+google-services.json
