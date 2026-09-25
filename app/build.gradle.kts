@@ -7,12 +7,12 @@ plugins {
 }
 
 android {
-    namespace = "com.example.song"
+    namespace = "com.shivaansh.pulseplayer"
     compileSdk = 35
 
 
     defaultConfig {
-        applicationId = "com.example.song"
+        applicationId = "com.shivaansh.pulseplayer"
         minSdk = 26
         targetSdk = 35
         versionCode = 7
