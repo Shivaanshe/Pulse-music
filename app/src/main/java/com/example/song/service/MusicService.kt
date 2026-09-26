@@ -35,14 +35,18 @@ import coil.request.SuccessResult
 import com.example.song.MainActivity
 import com.example.song.SongApplication
 import com.example.song.data.model.Song
+import com.example.song.util.CrashTracker
 import com.example.song.util.PulseLogger
 import com.example.song.util.YoutubeStreamHandler
+import androidx.media3.common.PlaybackException
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -62,7 +66,16 @@ class MusicService : MediaSessionService() {
     private val artworkCache = ConcurrentHashMap<String, ByteArray>()
     private val activeJobs = ConcurrentHashMap<String, Job>()
 
-    data class ResolvedData(val url: String, val headers: Map<String, String>, val artwork: ByteArray?)
+    data class ResolvedData(
+        val url: String,
+        val headers: Map<String, String>,
+        val artwork: ByteArray?,
+        val timestamp: Long = System.currentTimeMillis()
+    ) {
+        fun isExpired(): Boolean {
+            return (System.currentTimeMillis() - timestamp) > 3 * 60 * 60 * 1000L
+        }
+    }
 
     companion object {
         private const val TAG = "PulseDebug"
@@ -92,7 +105,8 @@ class MusicService : MediaSessionService() {
                         val query = dataSpec.uri.getQueryParameter("query") ?: return dataSpec
                         val artworkUrl = dataSpec.uri.getQueryParameter("artwork_url") ?: ""
                         
-                        resolvedCache[query]?.let { cached ->
+                        val cached = resolvedCache[query]
+                        if (cached != null && !cached.isExpired()) {
                             PulseLogger.log("JIT Cache Hit: Instant skip enabled.")
                             return dataSpec.buildUpon()
                                 .setUri(Uri.parse(cached.url))
@@ -240,6 +254,29 @@ class MusicService : MediaSessionService() {
                     }
                 }
             }
+
+            override fun onPlayerError(error: PlaybackException) {
+                val currentMediaItem = player.currentMediaItem
+                val query = currentMediaItem?.localConfiguration?.uri?.getQueryParameter("query")
+                
+                PulseLogger.log("ExoPlayer error in MusicService: ${error.errorCodeName} (${error.message})", isError = true)
+                
+                if (!query.isNullOrEmpty() && isSourceOrNetworkError(error)) {
+                    PulseLogger.log("Source/network error for JIT track: $query. Invalidating cache & re-resolving...")
+                    resolvedCache.remove(query)
+                    attemptJitRetryAndRecovery(query, currentMediaItem)
+                    return
+                }
+
+                CrashTracker.recordException(
+                    throwable = error,
+                    breadcrumb = "ExoPlayer error in MusicService",
+                    customKeys = mapOf(
+                        "error_code" to error.errorCodeName,
+                        "media_id" to (currentMediaItem?.mediaId ?: "unknown")
+                    )
+                )
+            }
         })
 
         val sessionActivityPendingIntent = PendingIntent.getActivity(
@@ -268,6 +305,59 @@ class MusicService : MediaSessionService() {
             mediaSession?.release()
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    private var isRetryingJit = false
+
+    private fun isSourceOrNetworkError(error: PlaybackException): Boolean {
+        val errorCode = error.errorCode
+        return errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+               errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+               errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+               errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+               errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
+               errorCode == PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED ||
+               errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ||
+               error.cause is UnknownHostException ||
+               error.cause is SocketTimeoutException ||
+               error.message?.contains("Source error", ignoreCase = true) == true ||
+               error.message?.contains("Response code", ignoreCase = true) == true
+    }
+
+    private fun attemptJitRetryAndRecovery(query: String, mediaItem: MediaItem) {
+        if (isRetryingJit) return
+        isRetryingJit = true
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                PulseLogger.log("Auto-recovery: Re-resolving stream for $query")
+                val artworkUrl = mediaItem.mediaMetadata.extras?.getString("custom_artwork_url") ?: ""
+                val freshData = performResolution(query, artworkUrl, isPriority = true)
+
+                if (freshData != null) {
+                    resolvedCache[query] = freshData
+                    PulseLogger.log("Auto-recovery SUCCESS: Fresh URL obtained for $query. Resuming playback...")
+
+                    withContext(Dispatchers.Main) {
+                        if (player.mediaItemCount > 0) {
+                            val currentIndex = player.currentMediaItemIndex
+                            val currentPos = player.currentPosition
+
+                            player.prepare()
+                            player.seekTo(currentIndex, currentPos)
+                            player.play()
+                        }
+                    }
+                } else {
+                    PulseLogger.log("Auto-recovery FAILED: Could not re-resolve stream for $query", isError = true)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during JIT auto-recovery", e)
+                CrashTracker.recordException(e, "JIT auto-recovery failed", mapOf("query" to query))
+            } finally {
+                isRetryingJit = false
+            }
+        }
     }
 
     private suspend fun performResolution(query: String, artworkUrl: String, isPriority: Boolean): ResolvedData? = withContext(Dispatchers.IO) {
@@ -326,7 +416,7 @@ class MusicService : MediaSessionService() {
                 val query = item.localConfiguration?.uri?.getQueryParameter("query")
                 val artUrl = item.localConfiguration?.uri?.getQueryParameter("artwork_url")
 
-                if (query != null && !resolvedCache.containsKey(query)) {
+                if (query != null && (!resolvedCache.containsKey(query) || resolvedCache[query]?.isExpired() == true)) {
                     val resolved = performResolution(query, artUrl ?: "", isPriority = false)
                     if (resolved != null) {
                         resolvedCache[query] = resolved

@@ -129,31 +129,42 @@ object YoutubeStreamHandler {
     }
 
     private suspend fun resolveSearchToId(query: String, processId: String): String? = withContext(Dispatchers.IO) {
-        try {
-            val cleanQuery = query.removePrefix("pulse_placeholder:")
-                                  .replace("ytsearch1:", "", ignoreCase = true)
-                                  .replace("official audio", "", ignoreCase = true)
-                                  .trim()
-            
-            PulseLogger.log("Searching YouTube: $cleanQuery")
-            val finalQuery = "ytsearch1:$cleanQuery"
-            val request = YoutubeDLRequest(finalQuery).apply {
-                addOption("--get-id")
-                addOption("--extractor-args", "youtube:player_client=android,mweb")
-                addOption("--no-playlist")
-                addOption("--no-check-certificate")
-                addOption("--socket-timeout", "10")
-            }
-            
-            val response = try {
-                YoutubeDL.getInstance().execute(request, processId)
+        val cleanQuery = query.removePrefix("pulse_placeholder:")
+                              .replace("ytsearch1:", "", ignoreCase = true)
+                              .replace("official audio", "", ignoreCase = true)
+                              .trim()
+        
+        PulseLogger.log("Searching YouTube: $cleanQuery")
+        val finalQuery = "ytsearch1:$cleanQuery"
+
+        var attempts = 0
+        while (attempts < 2) {
+            attempts++
+            try {
+                val request = YoutubeDLRequest(finalQuery).apply {
+                    addOption("--get-id")
+                    addOption("--extractor-args", "youtube:player_client=android,mweb")
+                    addOption("--no-playlist")
+                    addOption("--no-check-certificate")
+                    addOption("--force-ipv4")
+                    addOption("--socket-timeout", "15")
+                }
+                
+                val response = try {
+                    YoutubeDL.getInstance().execute(request, processId)
+                } catch (e: Exception) {
+                    null
+                }
+                val id = response?.out?.trim()?.lineSequence()?.firstOrNull { it.isNotBlank() }
+                if (!id.isNullOrEmpty()) {
+                    return@withContext id
+                }
             } catch (e: Exception) {
-                null
+                Log.w(TAG, "Search attempt $attempts failed for query '$cleanQuery'", e)
             }
-            response?.out?.trim()?.lineSequence()?.firstOrNull { it.isNotBlank() }
-        } catch (e: Exception) {
-            null
+            if (attempts < 2) delay(300)
         }
+        null
     }
 
     suspend fun getStreamInfo(youtubeUrl: String, processId: String): StreamInfo? = withContext(Dispatchers.IO) {
@@ -171,47 +182,57 @@ object YoutubeStreamHandler {
         val clientConfigs = listOf(
             "android,mweb",
             "mweb",
-            "android_vr"
+            "android_vr",
+            "web"
         )
 
         for (clients in clientConfigs) {
-            try {
-                val request = YoutubeDLRequest(actualUrl).apply {
-                    addOption("-f", "bestaudio/ba/b")
-                    addOption("--dump-json")
-                    addOption("--extractor-args", "youtube:player_client=$clients;web:visitor_data=random")
-                    addOption("--socket-timeout", "10")
-                }
-                
-                val response = try {
-                    YoutubeDL.getInstance().execute(request, processId)
-                } catch (e: Exception) {
-                    null
-                }
+            var attempts = 0
+            while (attempts < 2) {
+                attempts++
+                try {
+                    val request = YoutubeDLRequest(actualUrl).apply {
+                        addOption("-f", "bestaudio/ba/b")
+                        addOption("--dump-json")
+                        addOption("--extractor-args", "youtube:player_client=$clients;web:visitor_data=random")
+                        addOption("--no-check-certificate")
+                        addOption("--force-ipv4")
+                        addOption("--socket-timeout", "15")
+                    }
+                    
+                    val response = try {
+                        YoutubeDL.getInstance().execute(request, processId)
+                    } catch (e: Exception) {
+                        null
+                    }
 
-                val out = response?.out
-                if (!out.isNullOrEmpty()) {
-                    val json = JSONObject(out)
-                    val directUrl = json.optString("url")
-                    val videoId = json.optString("id")
-                    val headers = mutableMapOf<String, String>()
-                    
-                    // Critical: YouTube requires specific User-Agent for certain clients
-                    val jsonHeaders = json.optJSONObject("http_headers")
-                    if (jsonHeaders != null) {
-                        jsonHeaders.keys().forEach { key -> headers[key] = jsonHeaders.getString(key) }
+                    val out = response?.out
+                    if (!out.isNullOrEmpty()) {
+                        val json = JSONObject(out)
+                        val directUrl = json.optString("url")
+                        val videoId = json.optString("id")
+                        val headers = mutableMapOf<String, String>()
+                        
+                        // Critical: YouTube requires specific User-Agent for certain clients
+                        val jsonHeaders = json.optJSONObject("http_headers")
+                        if (jsonHeaders != null) {
+                            jsonHeaders.keys().forEach { key -> headers[key] = jsonHeaders.getString(key) }
+                        }
+                        
+                        // Fallback User-Agent if missing
+                        if (!headers.containsKey("User-Agent") && !headers.containsKey("user-agent")) {
+                            headers["User-Agent"] = "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US; Pixel 8 Build/AP2A.240705.004) gzip"
+                        }
+                        
+                        if (directUrl.isNotEmpty()) {
+                            return@withContext StreamInfo(url = directUrl, headers = headers, videoId = json.optString("id"))
+                        }
                     }
-                    
-                    // Fallback User-Agent if missing
-                    if (!headers.containsKey("User-Agent") && !headers.containsKey("user-agent")) {
-                        headers["User-Agent"] = "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US; Pixel 8 Build/AP2A.240705.004) gzip"
-                    }
-                    
-                    if (directUrl.isNotEmpty()) {
-                        return@withContext StreamInfo(url = directUrl, headers = headers, videoId = json.optString("id"))
-                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Stream info attempt $attempts ($clients) failed", e)
                 }
-            } catch (_: Exception) {}
+                if (attempts < 2) delay(300)
+            }
         }
         return@withContext null
     }

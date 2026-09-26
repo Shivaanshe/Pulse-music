@@ -31,6 +31,9 @@ import java.io.File
 import android.content.Intent
 import android.os.Process
 import com.example.song.util.CrashTracker
+import com.example.song.util.ResilientDns
+import okhttp3.ConnectionPool
+import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 class SongApplication : Application(), ImageLoaderFactory {
@@ -50,10 +53,14 @@ class SongApplication : Application(), ImageLoaderFactory {
 
     val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .dns(ResilientDns)
+            .retryOnConnectionFailure(true)
+            .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
             .followRedirects(true)
             .followSslRedirects(true)
-            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build()
     }
 
