@@ -41,6 +41,7 @@ import com.example.song.util.YoutubeStreamHandler
 import androidx.media3.common.PlaybackException
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
@@ -66,6 +67,9 @@ class MusicService : MediaSessionService() {
     private val artworkCache = ConcurrentHashMap<String, ByteArray>()
     private val activeJobs = ConcurrentHashMap<String, Job>()
 
+    @Volatile private var currentBackgroundProcessId: String? = null
+    private var preResolveJob: Job? = null
+
     data class ResolvedData(
         val url: String,
         val headers: Map<String, String>,
@@ -73,7 +77,18 @@ class MusicService : MediaSessionService() {
         val timestamp: Long = System.currentTimeMillis()
     ) {
         fun isExpired(): Boolean {
-            return (System.currentTimeMillis() - timestamp) > 3 * 60 * 60 * 1000L
+            try {
+                val expireParam = Uri.parse(url).getQueryParameter("expire")
+                if (expireParam != null) {
+                    val expireTimeSec = expireParam.toLongOrNull()
+                    if (expireTimeSec != null) {
+                        val currentTimeSec = System.currentTimeMillis() / 1000L
+                        return currentTimeSec >= (expireTimeSec - 300)
+                    }
+                }
+            } catch (_: Exception) {}
+
+            return (System.currentTimeMillis() - timestamp) > 90 * 60 * 1000L
         }
     }
 
@@ -369,6 +384,17 @@ class MusicService : MediaSessionService() {
             return@withContext ResolvedData(Uri.fromFile(File(query)).toString(), emptyMap(), artworkBytes)
         }
 
+        if (isPriority) {
+            currentBackgroundProcessId?.let { bgProcId ->
+                try {
+                    YoutubeDL.getInstance().destroyProcessById(bgProcId)
+                    PulseLogger.log("Preempted background JIT pre-resolution for priority request.")
+                } catch (_: Exception) {}
+            }
+        } else {
+            currentBackgroundProcessId = processId
+        }
+
         val job = Job()
         activeJobs[query] = job
         
@@ -389,6 +415,9 @@ class MusicService : MediaSessionService() {
                 }
             }
         } catch (_: Exception) { null } finally {
+            if (!isPriority && currentBackgroundProcessId == processId) {
+                currentBackgroundProcessId = null
+            }
             com.yausername.youtubedl_android.YoutubeDL.getInstance().destroyProcessById(processId)
             activeJobs.remove(query)
             job.cancel()
@@ -396,15 +425,20 @@ class MusicService : MediaSessionService() {
     }
 
     private fun preResolveNextItems() {
-        serviceScope.launch(Dispatchers.IO) {
+        preResolveJob?.cancel()
+        preResolveJob = serviceScope.launch(Dispatchers.IO) {
             val (currentIndex, count) = withContext(Dispatchers.Main) {
                 player.currentMediaItemIndex to player.mediaItemCount
             }
             if (count == 0) return@launch
 
+            trimCacheIfNeeded(currentIndex)
+
             // 🔋 Active Sliding Window Pre-Resolution: 2 tracks ahead, 1 track behind
             val windowIndices = listOf(currentIndex + 1, currentIndex + 2, currentIndex - 1)
             for (i in windowIndices) {
+                if (!isActive) break
+
                 val item = withContext(Dispatchers.Main) {
                     runCatching {
                         if (i in 0 until player.mediaItemCount) {
@@ -418,13 +452,32 @@ class MusicService : MediaSessionService() {
 
                 if (query != null && (!resolvedCache.containsKey(query) || resolvedCache[query]?.isExpired() == true)) {
                     val resolved = performResolution(query, artUrl ?: "", isPriority = false)
-                    if (resolved != null) {
+                    if (resolved != null && isActive) {
                         resolvedCache[query] = resolved
                         withContext(Dispatchers.Main) {
                             updateMetadataInQueue(i, item.mediaId, resolved.artwork)
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private fun trimCacheIfNeeded(currentIndex: Int) {
+        if (resolvedCache.size > 35) {
+            val keysToRemove = resolvedCache.keys.filter { key ->
+                val isNearActiveWindow = (currentIndex - 2..currentIndex + 3).any { idx ->
+                    if (idx in 0 until player.mediaItemCount) {
+                        val itemKey = player.getMediaItemAt(idx).localConfiguration?.uri?.getQueryParameter("query")
+                        itemKey == key
+                    } else false
+                }
+                !isNearActiveWindow
+            }.take(resolvedCache.size - 25)
+
+            for (k in keysToRemove) {
+                resolvedCache.remove(k)
+                artworkCache.remove(k)
             }
         }
     }
@@ -440,11 +493,7 @@ class MusicService : MediaSessionService() {
                         .build()
                     val updatedItem = item.buildUpon().setMediaMetadata(updatedMetadata).build()
                     
-                    if (index == player.currentMediaItemIndex) {
-                        val pos = player.currentPosition
-                        player.replaceMediaItem(index, updatedItem)
-                        player.seekTo(index, pos)
-                    } else {
+                    if (index != player.currentMediaItemIndex) {
                         player.replaceMediaItem(index, updatedItem)
                     }
                 }
