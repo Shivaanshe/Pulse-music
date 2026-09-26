@@ -29,6 +29,7 @@ import com.example.song.data.model.StreamingItem
 import com.example.song.data.repository.SongRepository
 import com.example.song.service.MusicService
 import com.example.song.util.CrashTracker
+import com.example.song.util.MusicQueueCache
 import com.example.song.util.PulseLogger
 import com.example.song.util.SpotifyResolver
 import com.example.song.util.YoutubeStreamHandler
@@ -1042,8 +1043,9 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         isPreparingNewSession = false
 
         val fullTimeline = _historyStack.value + _currentQueue.value
-        val ids = fullTimeline.mapTo(ArrayList()) { it.id }
+        MusicQueueCache.setQueue(fullTimeline)
 
+        val ids = fullTimeline.mapTo(ArrayList()) { it.id }
         lastSentTimelineIds = ArrayList(ids)
 
         getOrInitMediaController()?.let { controller ->
@@ -1051,7 +1053,9 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 putIntegerArrayList("ids", ids)
                 putInt("index", _historyStack.value.size)
                 putBoolean("isStreaming", false)
-                putParcelableArrayList("songs", ArrayList(fullTimeline))
+                if (fullTimeline.size <= 150) {
+                    putParcelableArrayList("songs", ArrayList(fullTimeline))
+                }
             }
             controller.sendCustomCommand(SessionCommand("PLAY_QUEUE", Bundle.EMPTY), args)
         }
@@ -1122,8 +1126,9 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         isPreparingNewSession = false
 
         val fullTimeline = _historyStack.value + _currentQueue.value
-        val ids = fullTimeline.mapTo(ArrayList()) { it.id }
+        MusicQueueCache.setQueue(fullTimeline)
 
+        val ids = fullTimeline.mapTo(ArrayList()) { it.id }
         lastSentTimelineIds = ArrayList(ids)
 
         getOrInitMediaController()?.let { controller ->
@@ -1131,7 +1136,9 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
                 putIntegerArrayList("ids", ids)
                 putInt("index", _historyStack.value.size)
                 putBoolean("isStreaming", true)
-                putParcelableArrayList("songs", ArrayList(fullTimeline))
+                if (fullTimeline.size <= 150) {
+                    putParcelableArrayList("songs", ArrayList(fullTimeline))
+                }
             }
             controller.sendCustomCommand(SessionCommand("PLAY_QUEUE", Bundle.EMPTY), args)
         }
@@ -1275,6 +1282,8 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
         if (queue.isEmpty() && historySongs.isEmpty()) return
 
         val fullTimeline = historySongs + queue
+        MusicQueueCache.setQueue(fullTimeline)
+
         val ids = fullTimeline.mapTo(ArrayList()) { it.id }
 
         // 🛡️ INFINITE LOOP FIX: Only notify ExoPlayer if the actual playlist items changed
@@ -1288,7 +1297,9 @@ class SongViewModel(application: Application) : AndroidViewModel(application) {
             val args = Bundle().apply {
                 putIntegerArrayList("ids", ids)
                 putInt("index", index)
-                putParcelableArrayList("songs", ArrayList(fullTimeline))
+                if (fullTimeline.size <= 150) {
+                    putParcelableArrayList("songs", ArrayList(fullTimeline))
+                }
             }
             controller.sendCustomCommand(SessionCommand("UPDATE_QUEUE", Bundle.EMPTY), args)
         }
